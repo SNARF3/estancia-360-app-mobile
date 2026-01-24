@@ -1,31 +1,36 @@
 import { Stack } from 'expo-router';
 import { Colors } from '../constants/theme';
+import FlashMessage from 'react-native-flash-message';
 
 export default function RootLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: Colors.background,
-        },
-        headerTitleStyle: {
-          color: Colors.textPrimary,
-          fontFamily: 'Montserrat-SemiBold',
-        },
-        headerTintColor: Colors.primary,
-        contentStyle: {
-          backgroundColor: Colors.background,
-        },
-        headerShown: false,
-      }}
-    >
-      {/* Pantallas de autenticación */}
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="views/auth/login" options={{ headerShown: false }} />
-      <Stack.Screen name="views/auth/register" options={{ headerShown: false }} />
-      
-      {/* Pantallas con tabs */}
-      <Stack.Screen name="views/(tabs)" options={{ headerShown: false }} />
-    </Stack>
+    <>
+      <Stack
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: Colors.background,
+          },
+          headerTitleStyle: {
+            color: Colors.textPrimary,
+            fontFamily: 'Montserrat-SemiBold',
+          },
+          headerTintColor: Colors.primary,
+          contentStyle: {
+            backgroundColor: Colors.background,
+          },
+          headerShown: false,
+        }}
+      >
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="views" options={{ headerShown: false }} />
+      </Stack>
+      {/* FlashMessage para popups globales */}
+      <FlashMessage 
+        position="top" 
+        duration={4000}
+        floating={true}
+        style={{ paddingTop: 40 }}
+      />
+    </>
   );
 }

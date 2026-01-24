@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors, Typography } from '../../constants/theme';
-import { useNavigation } from '../../hooks/use-navigation';
+import { useNavigation } from '../../hooks/navigation/use-navigation';
 
 interface TabBarProps {
   state: any;
@@ -10,27 +10,27 @@ interface TabBarProps {
 }
 
 export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
-  const { navigateToTab } = useNavigation();
+  const { navigate } = useNavigation();
 
   const tabs = [
     {
       name: 'administracion',
       label: 'Administración',
       icon: 'business',
-      route: '/views/management/Administracion' as const,
+      route: '/views/(tabs)/management/Administracion' as const,
     },
     {
       name: 'agregar',
       label: '',
       icon: 'add-circle',
-      route: '/views/management/Agregar' as const,
+      route: '/views/(tabs)/management/Agregar' as const,
       isCentral: true,
     },
     {
       name: 'usuario',
       label: 'Usuario',
       icon: 'person',
-      route: '/views/users/usuario' as const,
+      route: '/views/(tabs)/users/usuario' as const,
     },
   ];
 
@@ -46,7 +46,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
             <View key={tab.name} style={styles.centralTabContainer}>
               <TouchableOpacity
                 style={styles.centralTab}
-                onPress={() => navigateToTab(tab.route)}
+                onPress={() => navigate(tab.route)}
                 activeOpacity={0.8}
               >
                 <View style={styles.centralTabBackground}>
@@ -65,7 +65,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
           <TouchableOpacity
             key={tab.name}
             style={styles.tab}
-            onPress={() => navigateToTab(tab.route)}
+            onPress={() => navigate(tab.route)}
             activeOpacity={0.7}
           >
             <View style={[

@@ -60,6 +60,15 @@ export const Colors = {
   error: '#d93e2e',   // Rojo complementario al naranja
   warning: '#e2772a', // secondary - Naranja Vibrante
   info: '#243453',    // textPrimary - Azul Marino
+
+  errorLight: 'rgba(217, 62, 46, 0.1)', // Rojo claro para fondos de error
+  successLight: 'rgba(51, 108, 54, 0.1)', // Verde claro para fondos de éxito
+  border: 'rgba(36, 52, 83, 0.1)', // Azul Marino con 10% opacidad para bordes
+  black: '#000000',
+  primaryLight: '#5a8f5a', // Verde Bosque Claro
+  lightGray: '#d3d3d3',
+  disabled: '#a9a9a9',
+
 };
 
 export const Typography = {

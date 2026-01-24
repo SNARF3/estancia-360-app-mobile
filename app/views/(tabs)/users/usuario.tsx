@@ -1,9 +1,18 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity,
+  Alert 
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { HeaderText } from '../../../../components/common/HeaderText';
 import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
 import { Colors, Spacing, Typography } from '../../../../constants/theme';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+import { showMessage } from 'react-native-flash-message';
 
 export default function UsuarioScreen() {
   const userStats = [
@@ -38,6 +47,87 @@ export default function UsuarioScreen() {
       ],
     },
   ];
+
+  const handleLogout = async () => {
+    // Mostrar confirmación
+    Alert.alert(
+      'Cerrar Sesión',
+      '¿Estás seguro que deseas cerrar sesión?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Cerrar Sesión',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Limpiar TODOS los datos de sesión
+              const keysToRemove = [
+                'userToken',
+                'userData',
+                'selectedRoleId',
+                'authToken',
+                'refreshToken',
+                'userProfile',
+                'userPreferences'
+              ];
+              
+              // Eliminar cada item individualmente
+              for (const key of keysToRemove) {
+                await AsyncStorage.removeItem(key);
+              }
+              
+              // También eliminar cualquier otro dato que pueda existir
+              // usando getAllKeys para asegurarnos
+              const allKeys = await AsyncStorage.getAllKeys();
+              const authRelatedKeys = allKeys.filter(key => 
+                key.includes('token') || 
+                key.includes('auth') || 
+                key.includes('user') ||
+                key.includes('session')
+              );
+              
+              for (const key of authRelatedKeys) {
+                await AsyncStorage.removeItem(key);
+              }
+              
+              console.log('Sesión cerrada. Datos eliminados.');
+              
+              // Mostrar mensaje de éxito
+              showMessage({
+                message: 'Sesión cerrada',
+                description: 'Has cerrado sesión exitosamente.',
+                type: 'success',
+                duration: 3000,
+                floating: true,
+              });
+              
+              // Redirigir al login después de un breve delay
+              setTimeout(() => {
+                // Usar replace para no poder volver atrás
+                router.replace('/views/auth/Inicio');
+              }, 500);
+              
+            } catch (error) {
+              console.error('Error al cerrar sesión:', error);
+              
+              // Mostrar mensaje de error
+              showMessage({
+                message: 'Error',
+                description: 'No se pudo cerrar sesión. Intenta nuevamente.',
+                type: 'danger',
+                duration: 3000,
+                floating: true,
+              });
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
 
   return (
     <ScreenContainer scrollable={true}>
@@ -92,9 +182,15 @@ export default function UsuarioScreen() {
           </View>
         ))}
 
-        {/* Cerrar Sesión */}
-        <TouchableOpacity style={styles.logoutButton}>
-          <Ionicons name="log-out" size={24} color={Colors.secondary} />
+        {/* Cerrar Sesión - Ahora con funcionalidad */}
+        <TouchableOpacity 
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          activeOpacity={0.7}
+        >
+          <View style={styles.logoutIconContainer}>
+            <Ionicons name="log-out" size={24} color={Colors.error} />
+          </View>
           <Text style={styles.logoutText}>Cerrar Sesión</Text>
         </TouchableOpacity>
       </View>
@@ -250,10 +346,20 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
     gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.error + '30',
+  },
+  logoutIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.error + '10',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   logoutText: {
     ...Typography.body,
-    color: Colors.secondary,
+    color: Colors.error,
     fontWeight: '600',
   },
 });
