@@ -1,11 +1,16 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { HeaderText } from '../../../../components/common/HeaderText';
-import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
-import { Colors, Spacing, Typography } from '../../../../constants/theme';
+import { useRouter } from 'expo-router'; // Usamos el hook useRouter
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+
+// Componentes y Constantes
+import { HeaderText } from '../../../../../components/common/HeaderText';
+import { ScreenContainer } from '../../../../../components/layout/ScreenContainer';
+import { Colors, Spacing, Typography } from '../../../../../constants/theme';
 
 export default function AdministracionScreen() {
+  const router = useRouter(); // Inicializamos el router
+
   const stats = [
     { icon: 'business', label: 'Propiedades', value: '12', color: Colors.primary },
     { icon: 'calendar', label: 'Reservas Activas', value: '8', color: Colors.secondary },
@@ -13,12 +18,41 @@ export default function AdministracionScreen() {
     { icon: 'people', label: 'Clientes', value: '45', color: Colors.hover },
   ];
 
+  // --- CONFIGURACIÓN DE LOS BOTONES ---
   const quickActions = [
-    { icon: 'add-circle', label: 'Nueva Propiedad', color: Colors.primary },
-    { icon: 'list', label: 'Ver Reservas', color: Colors.secondary },
-    { icon: 'stats-chart', label: 'Reportes', color: Colors.accent },
-    { icon: 'settings', label: 'Configuración', color: Colors.textPrimary },
+    {
+      icon: 'add-circle',
+      label: 'Nueva Propiedad',
+      color: Colors.primary,
+      route: '/views/admin/NewProperty'
+    },
+    {
+      // ✅ NUEVO BOTÓN: QR TRABAJADORES
+      icon: 'qr-code',
+      label: 'QR Trabajadores',
+      color: '#2ecc71',
+      route: '/views/(tabs)/admin/management/QrWorkerGenerator'
+    },
+    {
+      icon: 'list',
+      label: 'Ver Reservas',
+      color: Colors.secondary,
+      route: '/views/(tabs)/management/QrWorkerGenerator'
+    },
+    {
+      icon: 'stats-chart',
+      label: 'Reportes',
+      color: Colors.accent,
+      route: '/views/(tabs)/management/QrWorkerGenerator'
+    },
   ];
+
+  const handleNavigation = (route?: string) => {
+    if (route) {
+      // Hacemos el push a la ruta específica
+      router.push(route as any);
+    }
+  };
 
   return (
     <ScreenContainer scrollable={true}>
@@ -49,7 +83,12 @@ export default function AdministracionScreen() {
         <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
         <View style={styles.actionsGrid}>
           {quickActions.map((action, index) => (
-            <TouchableOpacity key={index} style={styles.actionCard}>
+            <TouchableOpacity
+              key={index}
+              style={styles.actionCard}
+              onPress={() => handleNavigation(action.route)}
+              activeOpacity={0.7}
+            >
               <View style={[styles.actionIcon, { backgroundColor: action.color }]}>
                 <Ionicons name={action.icon as any} size={28} color={Colors.textLight} />
               </View>
@@ -59,7 +98,7 @@ export default function AdministracionScreen() {
         </View>
       </View>
 
-      {/* Últimas Actividades */}
+      {/* Últimas Actividades (Ejemplo visual) */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Actividad Reciente</Text>
         <View style={styles.activityList}>
@@ -84,31 +123,12 @@ export default function AdministracionScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    marginBottom: Spacing.xl,
-  },
-  title: {
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
-  },
-  subtitle: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-  section: {
-    marginBottom: Spacing.xl,
-  },
-  sectionTitle: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.md,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
+  header: { marginBottom: Spacing.xl },
+  title: { color: Colors.textPrimary, marginBottom: Spacing.xs },
+  subtitle: { ...Typography.body, color: Colors.textSecondary },
+  section: { marginBottom: Spacing.xl },
+  sectionTitle: { ...Typography.h3, color: Colors.textPrimary, marginBottom: Spacing.md },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.md },
   statCard: {
     backgroundColor: Colors.white,
     borderRadius: 16,
@@ -121,30 +141,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  statIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  statValue: {
-    ...Typography.h2,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
-  },
-  statLabel: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
+  statIcon: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.sm },
+  statValue: { ...Typography.h2, color: Colors.textPrimary, marginBottom: Spacing.xs },
+  statLabel: { ...Typography.bodySmall, color: Colors.textSecondary, textAlign: 'center' },
+
+  // Grid de acciones
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.md },
   actionCard: {
     backgroundColor: Colors.white,
     borderRadius: 16,
@@ -156,21 +158,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
-  },
-  actionIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: Spacing.md,
   },
-  actionLabel: {
-    ...Typography.body,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
+  actionIcon: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', marginBottom: Spacing.md },
+  actionLabel: { ...Typography.body, color: Colors.textPrimary, textAlign: 'center', fontWeight: '500' },
+
+  // Lista de actividad
   activityList: {
     backgroundColor: Colors.white,
     borderRadius: 16,
@@ -181,37 +174,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.textDisabled + '20',
-  },
-  activityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-    marginTop: Spacing.sm,
-    marginRight: Spacing.md,
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityAction: {
-    ...Typography.body,
-    color: Colors.textPrimary,
-    fontWeight: '500',
-    marginBottom: 2,
-  },
-  activityProperty: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-    marginBottom: 2,
-  },
-  activityTime: {
-    ...Typography.overline,
-    color: Colors.textDisabled,
-  },
+  activityItem: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.textDisabled + '20' },
+  activityDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary, marginTop: Spacing.sm, marginRight: Spacing.md },
+  activityContent: { flex: 1 },
+  activityAction: { ...Typography.body, color: Colors.textPrimary, fontWeight: '500', marginBottom: 2 },
+  activityProperty: { ...Typography.bodySmall, color: Colors.textSecondary, marginBottom: 2 },
+  activityTime: { ...Typography.overline, color: Colors.textDisabled },
 });

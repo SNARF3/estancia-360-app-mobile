@@ -1,6 +1,5 @@
 import { Tabs } from 'expo-router';
 import { BottomTabBar } from '../../../components/navigation/BottomTabBar'; // ← CON llaves
-import { Colors } from '../../../constants/theme';
 
 export default function TabLayout() {
   return (
@@ -16,23 +15,23 @@ export default function TabLayout() {
           href: null,
         }}
       />
-      
+
       <Tabs.Screen
-        name="management/Administracion"
+        name="/admin/management/Administracion"
         options={{
           title: 'Administración',
         }}
       />
-      
+
       <Tabs.Screen
-        name="management/Agregar"
+        name="/admin/management/Agregar"
         options={{
           title: 'Agregar',
         }}
       />
-      
+
       <Tabs.Screen
-        name="users/usuario"
+        name="/users/usuario"
         options={{
           title: 'Usuario',
         }}

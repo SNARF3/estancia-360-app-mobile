@@ -1,9 +1,9 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { HeaderText } from '../../../../components/common/HeaderText';
-import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
-import { Colors, Spacing, Typography } from '../../../../constants/theme';
+import React from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { HeaderText } from '../../../../../components/common/HeaderText';
+import { ScreenContainer } from '../../../../../components/layout/ScreenContainer';
+import { Colors, Spacing, Typography } from '../../../../../constants/theme';
 
 export default function AgregarScreen() {
   const options = [
