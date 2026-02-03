@@ -1,13 +1,15 @@
 import { useRouter } from 'expo-router';
 
-export type AppRoute = 
-  | '/views/(tabs)/management/Administracion'
-  | '/views/(tabs)/management/Agregar'
+export type AppRoute =
+  | '/views/(tabs)/admin/management/Administracion'
+  | '/views/(tabs)/admin/management/Agregar'
   | '/views/(tabs)/users/usuario'
   | '/views/(tabs)/users/estanciaRegistro'
   | '/views/auth/login'
   | 'views/auth/inicio'
-  | '/views/auth/Register';
+  | '/views/auth/Register'
+  | '/views/(tabs)/worker/WorkerManagement'
+  | '/views/(tabs)/worker/QrScannerRanch';
 
 export const useNavigation = () => {
   const router = useRouter();

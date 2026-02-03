@@ -1,20 +1,20 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import axios, { AxiosError, AxiosInstance, AxiosResponse } from 'axios';
 
-// Configuración base de la API
+
 const API_BASE_URL = 'http://localhost:3000/api';
 
-// Interfaz para la respuesta estándar de la API
 export interface ApiResponse<T = any> {
-  success: boolean;
+  success?: boolean;
   message?: string;
   data?: T;
   error?: string;
+  [key: string]: any;
 }
 
 // Configuración de axios
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000, // 10 segundos
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -41,7 +41,7 @@ axiosInstance.interceptors.response.use(
 export const postRequest = async <T = any>(
   endpoint: string,
   data: any
-): Promise<T> => {  
+): Promise<T> => {
   try {
     const response = await axiosInstance.post(endpoint, data);
     return response.data as T;
@@ -50,23 +50,21 @@ export const postRequest = async <T = any>(
   }
 };
 
-// --- NUEVA FUNCIÓN PUT ---
 // Función para realizar peticiones PUT
 export const putRequest = async <T = any>(
   endpoint: string,
   data: any
-): Promise<T> => {  
+): Promise<T> => {
   try {
-    // Usamos .put aquí
     const response = await axiosInstance.put(endpoint, data);
     return response.data as T;
   } catch (error: any) {
     throw error;
   }
 };
-// -------------------------
 
 // Función para realizar peticiones GET
+// Ahora devuelve Promesa de ApiResponse<T> sin dar error en el catch
 export const getRequest = async <T = any>(
   endpoint: string
 ): Promise<ApiResponse<T>> => {
@@ -76,6 +74,7 @@ export const getRequest = async <T = any>(
     );
     return response.data;
   } catch (error: any) {
+    // Este objeto ahora sí cumple con la interfaz ApiResponse
     return {
       success: false,
       error: error.message || 'Error desconocido en la petición',

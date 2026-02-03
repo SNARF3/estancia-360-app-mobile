@@ -1,11 +1,12 @@
 // hooks/auth/useAuthRedirect.ts
-import { useEffect, useState } from 'react';
-import { router, usePathname } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router, usePathname } from 'expo-router';
+import { useEffect, useState } from 'react';
 
 const STORAGE_KEYS = {
   IS_LOGGED_IN: 'is_logged_in',
   ACCESS_TOKEN: 'access_token',
+  USER_ROLE: 'user_role', // Key usada en Login
 };
 
 // Rutas públicas (no requieren autenticación)
@@ -14,7 +15,7 @@ const PUBLIC_ROUTES = [
   '/views/auth/register',
   '/views/auth/forgot-password',
   '/views/auth/welcome',
-  '/', // pantalla de inicio si la tienes
+  // '/', // REMOVED: pantalla de inicio si la tienes (causes infinite loop with startsWith)
 ];
 
 // Rutas protegidas (requieren autenticación)
@@ -35,19 +36,28 @@ export const useAuthRedirect = () => {
       try {
         const isLoggedIn = await AsyncStorage.getItem(STORAGE_KEYS.IS_LOGGED_IN);
         const accessToken = await AsyncStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-        
+
         const isAuthenticated = !!(isLoggedIn === 'true' && accessToken);
-        const isPublicRoute = PUBLIC_ROUTES.some(route => 
+        const isPublicRoute = PUBLIC_ROUTES.some(route =>
           pathname.startsWith(route)
-        );
-        const isProtectedRoute = PROTECTED_ROUTES.some(route => 
+        ) || pathname === '/';
+        const isProtectedRoute = PROTECTED_ROUTES.some(route =>
           pathname.startsWith(route)
         );
 
         // Caso 1: Está autenticado pero está en ruta pública (login/register)
         if (isAuthenticated && isPublicRoute) {
-          console.log('Usuario autenticado en ruta pública, redirigiendo...');
-          router.replace('/views/(tabs)/management/Administracion');
+          const roleIdStr = await AsyncStorage.getItem(STORAGE_KEYS.USER_ROLE); // Asegúrate que esta key exista en STORAGE_KEYS del archivo, si no, usa 'user_role' literal o ajusta
+          const roleId = roleIdStr ? parseInt(roleIdStr) : null;
+
+          console.log(`Usuario autenticado (Rol: ${roleId}) en ruta pública, redirigiendo...`);
+
+          if (roleId === 3) {
+            router.replace('/views/(tabs)/worker/WorkerManagement');
+          } else {
+            // Por defecto admin o owner
+            router.replace('/views/(tabs)/admin/management/Administracion');
+          }
           return;
         }
 

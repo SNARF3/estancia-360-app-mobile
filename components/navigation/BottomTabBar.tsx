@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors, Typography } from '../../constants/theme';
+import { useAuth } from '../../hooks/auth/use-Auth';
 import { useNavigation } from '../../hooks/navigation/use-navigation';
 
 interface TabBarProps {
@@ -11,19 +12,29 @@ interface TabBarProps {
 
 export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   const { navigate } = useNavigation();
+  const { getUserRole } = useAuth();
+  const [role, setRole] = React.useState<number | null>(null);
 
-  const tabs = [
+  React.useEffect(() => {
+    const fetchRole = async () => {
+      const userRole = await getUserRole();
+      setRole(userRole);
+    };
+    fetchRole();
+  }, []);
+
+  const adminTabs = [
     {
       name: 'administracion',
       label: 'Administración',
       icon: 'business',
-      route: '/views/(tabs)/management/Administracion' as const,
+      route: '/views/(tabs)/admin/management/Administracion' as const,
     },
     {
       name: 'agregar',
       label: '',
       icon: 'add-circle',
-      route: '/views/(tabs)/management/Agregar' as const,
+      route: '/views/(tabs)/admin/management/Agregar' as const,
       isCentral: true,
     },
     {
@@ -34,11 +45,39 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     },
   ];
 
+  const workerTabs = [
+    {
+      name: 'inicio',
+      label: 'Inicio',
+      icon: 'home',
+      route: '/views/(tabs)/worker/WorkerManagement' as const,
+    },
+    {
+      name: 'scanner',
+      label: '',
+      icon: 'scan',
+      route: '/views/(tabs)/worker/QrScannerRanch' as const,
+      isCentral: true,
+    },
+    {
+      name: 'usuario',
+      label: 'Usuario',
+      icon: 'person',
+      route: '/views/(tabs)/users/usuario' as const,
+    },
+  ];
+
+  // Role 3 is Worker, otherwise Admin
+  const tabs = role === 3 ? workerTabs : adminTabs;
+
   return (
     <View style={styles.container}>
       <View style={styles.background} />
-      
+
       {tabs.map((tab, index) => {
+        // Simple focus logic based on index might happen to work if the number of tabs is the same
+        // But better is to just let it be for now since existing code used index.
+        // Ideally we match by route name but standard tab bars often use index.
         const isFocused = state.index === index;
 
         if (tab.isCentral) {
@@ -50,9 +89,9 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
                 activeOpacity={0.8}
               >
                 <View style={styles.centralTabBackground}>
-                  <Ionicons 
-                    name="add" 
-                    size={32} 
+                  <Ionicons
+                    name={tab.icon === 'scan' ? 'qr-code' : 'add'}
+                    size={32}
                     color={Colors.white}
                   />
                 </View>

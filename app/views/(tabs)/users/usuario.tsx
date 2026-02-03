@@ -1,20 +1,45 @@
-import React from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity,
-  Alert 
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+import React from 'react';
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
+import { showMessage } from 'react-native-flash-message';
 import { HeaderText } from '../../../../components/common/HeaderText';
 import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
 import { Colors, Spacing, Typography } from '../../../../constants/theme';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
-import { showMessage } from 'react-native-flash-message';
+
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { useAuth } from '../../../../hooks/auth/use-Auth';
 
 export default function UsuarioScreen() {
+  const { getUserRole, userData, checkAuthStatus } = useAuth();
+  const [roleName, setRoleName] = useState('Usuario');
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadData = async () => {
+        await checkAuthStatus();
+        const role = await getUserRole();
+
+        switch (role) {
+          case 1: setRoleName('Super Admin'); break;
+          case 2: setRoleName('Administrador'); break;
+          case 3: setRoleName('Trabajador'); break;
+          default: setRoleName('Usuario');
+        }
+      };
+
+      loadData();
+    }, [])
+  );
+
   const userStats = [
     { icon: 'calendar', label: 'Reservas Activas', value: '3' },
     { icon: 'star', label: 'Puntuación', value: '4.8' },
@@ -73,28 +98,28 @@ export default function UsuarioScreen() {
                 'userProfile',
                 'userPreferences'
               ];
-              
+
               // Eliminar cada item individualmente
               for (const key of keysToRemove) {
                 await AsyncStorage.removeItem(key);
               }
-              
+
               // También eliminar cualquier otro dato que pueda existir
               // usando getAllKeys para asegurarnos
               const allKeys = await AsyncStorage.getAllKeys();
-              const authRelatedKeys = allKeys.filter(key => 
-                key.includes('token') || 
-                key.includes('auth') || 
+              const authRelatedKeys = allKeys.filter(key =>
+                key.includes('token') ||
+                key.includes('auth') ||
                 key.includes('user') ||
                 key.includes('session')
               );
-              
+
               for (const key of authRelatedKeys) {
                 await AsyncStorage.removeItem(key);
               }
-              
+
               console.log('Sesión cerrada. Datos eliminados.');
-              
+
               // Mostrar mensaje de éxito
               showMessage({
                 message: 'Sesión cerrada',
@@ -103,16 +128,16 @@ export default function UsuarioScreen() {
                 duration: 3000,
                 floating: true,
               });
-              
+
               // Redirigir al login después de un breve delay
               setTimeout(() => {
                 // Usar replace para no poder volver atrás
                 router.replace('/views/auth/Inicio');
               }, 500);
-              
+
             } catch (error) {
               console.error('Error al cerrar sesión:', error);
-              
+
               // Mostrar mensaje de error
               showMessage({
                 message: 'Error',
@@ -141,10 +166,14 @@ export default function UsuarioScreen() {
             <Ionicons name="checkmark" size={16} color={Colors.textLight} />
           </View>
         </View>
-        <HeaderText variant="h1" style={styles.userName}>María González</HeaderText>
-        <Text style={styles.userEmail}>maria.gonzalez@email.com</Text>
+        <HeaderText variant="h1" style={styles.userName}>
+          {userData?.user?.name || userData?.name || 'Usuario'}
+        </HeaderText>
+        <Text style={styles.userEmail}>
+          {userData?.email || userData?.user?.email || 'usuario@email.com'}
+        </Text>
         <View style={styles.userBadge}>
-          <Text style={styles.userBadgeText}>Usuario Premium</Text>
+          <Text style={styles.userBadgeText}>{roleName}</Text>
         </View>
       </View>
 
@@ -183,7 +212,7 @@ export default function UsuarioScreen() {
         ))}
 
         {/* Cerrar Sesión - Ahora con funcionalidad */}
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.logoutButton}
           onPress={handleLogout}
           activeOpacity={0.7}

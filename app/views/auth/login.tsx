@@ -1,33 +1,33 @@
+import { Ionicons } from '@expo/vector-icons';
+import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
+  Animated,
   KeyboardAvoidingView,
   Platform,
-  Animated,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { AnimatedLogo } from '../../../components/common/AnimatedLogo';
+import { ButtonPrimary } from '../../../components/common/ButtonPrimary';
 import { HeaderText } from '../../../components/common/HeaderText';
 import { InputField } from '../../../components/common/InputField';
-import { ButtonPrimary } from '../../../components/common/ButtonPrimary';
-import { AnimatedLogo } from '../../../components/common/AnimatedLogo';
 import { Colors, Spacing, Typography } from '../../../constants/theme';
-import { Link, useRouter } from 'expo-router';
-import { useUserLoginLogic } from '../../../hooks/auth/use-UserLoginLogic'; 
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthRedirect } from '../../../hooks/auth/use-UserAuthRedirect';
+import { useUserLoginLogic } from '../../../hooks/auth/use-UserLoginLogic';
 
 export default function LoginScreen() {
   const router = useRouter();
-  
+
   // Estado para ver/ocultar contraseña
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   // Redirigir si ya está autenticado
   useAuthRedirect();
-  
+
   const {
     formData,
     touched,
@@ -47,20 +47,20 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.backButton}
         onPress={() => router.back()}
       >
         <Ionicons name="arrow-back" size={34} color={Colors.primary} />
       </TouchableOpacity>
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
-        <Animated.View 
+        <Animated.View
           style={[
             styles.header,
             { opacity: animations.fadeAnim, transform: [{ translateY: animations.headerSlideUp }] }
@@ -96,7 +96,7 @@ export default function LoginScreen() {
         </Animated.View>
 
         {/* Formulario */}
-        <Animated.View 
+        <Animated.View
           style={[
             styles.form,
             { opacity: animations.fadeAnim, transform: [{ translateY: animations.formSlideUp }] }
@@ -130,24 +130,24 @@ export default function LoginScreen() {
               editable={!loading}
               autoComplete="password"
             />
-            
+
             {/* Botón de Ojo */}
             <TouchableOpacity
               style={styles.eyeIcon}
               onPress={() => setIsPasswordVisible(!isPasswordVisible)}
               disabled={loading}
             >
-              <Ionicons 
-                name={isPasswordVisible ? "eye-off" : "eye"} 
-                size={24} 
-                color={Colors.textSecondary} 
+              <Ionicons
+                name={isPasswordVisible ? "eye-off" : "eye"}
+                size={24}
+                color={Colors.textSecondary}
               />
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.forgotPassword}
-            onPress={() => router.push('views/auth/VerificationCodeEmail' as any)} 
+            onPress={() => router.push('views/auth/VerificationCodeEmail' as any)}
             disabled={loading}
           >
             <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
@@ -155,25 +155,23 @@ export default function LoginScreen() {
         </Animated.View>
 
         {/* Botones */}
-        <Animated.View 
+        <Animated.View
           style={[
             styles.actions,
             { opacity: animations.fadeAnim, transform: [{ translateY: animations.buttonSlideUp }] }
           ]}
         >
-          <Animated.View style={{ transform: [{ rotate: animations.spinInterpolate }] }}>
-            <ButtonPrimary
-              title="Iniciar Sesión"
-              onPress={handleLogin}
-              loading={loading}
-              disabled={!isFormValid || loading}
-              style={styles.loginButton}
-            />
-          </Animated.View>
+          <ButtonPrimary
+            title="Iniciar Sesión"
+            onPress={handleLogin}
+            loading={loading}
+            disabled={!isFormValid || loading}
+            style={styles.loginButton}
+          />
 
           <View style={styles.registerSection}>
             <Text style={styles.registerText}>¿No tienes una cuenta? </Text>
-            <Link href="/views/auth/Register" asChild> 
+            <Link href="/views/auth/Register" asChild>
               <TouchableOpacity disabled={loading}>
                 <Text style={styles.registerLink}>Regístrate</Text>
               </TouchableOpacity>

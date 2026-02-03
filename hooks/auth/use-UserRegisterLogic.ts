@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 import { postRequest } from '../db.postre-connection/db.connection';
 
@@ -25,7 +25,7 @@ interface RegisterRequestData {
 }
 
 // Interfaz para respuesta exitosa del backend (con user)
-interface BackendRegisterSuccessResponse {
+export interface BackendRegisterSuccessResponse {
   user: {
     id: number;
     email: string;
@@ -46,12 +46,12 @@ interface BackendRegisterSuccessResponse {
 }
 
 // Interfaz para error del backend (con message)
-interface BackendRegisterErrorResponse {
+export interface BackendRegisterErrorResponse {
   message: string;
 }
 
 // Unión de tipos para manejar ambas respuestas
-type BackendRegisterResponse = BackendRegisterSuccessResponse | BackendRegisterErrorResponse;
+export type BackendRegisterResponse = BackendRegisterSuccessResponse | BackendRegisterErrorResponse;
 
 export const useUserRegisterLogic = (idRole: number = 2) => {
   // Estados del formulario
@@ -65,7 +65,7 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
     telefono: '',
     ci: '',
   });
-  
+
   const [touched, setTouched] = useState({
     nombre: false,
     apellidoPaterno: false,
@@ -76,7 +76,7 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
     telefono: false,
     ci: false,
   });
-  
+
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -238,7 +238,10 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
     };
   };
 
-  const handleRegister = async (): Promise<void> => {
+  // --- MODIFICACIÓN IMPORTANTE ---
+  // Cambiamos el retorno a Promise<BackendRegisterResponse | null>
+  // para que RegisterRanchScreen pueda recibir los datos.
+  const handleRegister = async (): Promise<BackendRegisterSuccessResponse | null> => {
     const validationErrors = validateForm();
     const hasErrors = Object.values(validationErrors).some(error => error !== '');
 
@@ -254,7 +257,7 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
         ci: true,
       });
       triggerShakeAnimation();
-      return;
+      return null;
     }
 
     setLoading(true);
@@ -263,10 +266,9 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
 
     try {
       const registerData = prepareRegisterData();
-      
+
       console.log('📤 Enviando datos de registro:', registerData);
-      
-      // Usar la unión de tipos
+
       const response = await postRequest<BackendRegisterResponse>(
         'estancia-360/auth/register',
         registerData
@@ -274,42 +276,38 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
 
       console.log('📥 Respuesta del backend:', response);
 
-      // DETECCIÓN CLARA: Verificar si es éxito (tiene user) o error (tiene message)
       const isSuccess = 'user' in response;
       const isError = 'message' in response;
 
       if (isSuccess && response.user) {
-        // ÉXITO: Hay objeto user en la respuesta
         console.log('✅ Registro exitoso. Usuario creado:', response.user.id);
         setSuccessMessage('¡Registro exitoso! Redirigiendo al login...');
         setApiError(null);
-        
+        // RETORNAMOS LA RESPUESTA COMPLETA PARA QUE EL LLAMADOR PUEDA USAR EL ID
+        return response as BackendRegisterSuccessResponse;
+
       } else if (isError && response.message) {
-        // ERROR: Hay propiedad message en la respuesta
         console.log('❌ Error del backend:', response.message);
         setApiError(response.message);
         setSuccessMessage(null);
         triggerShakeAnimation();
-        
+        return null;
+
       } else {
-        // Respuesta inesperada
         console.log('⚠️ Respuesta inesperada del backend:', response);
         setApiError('Respuesta inesperada del servidor');
         setSuccessMessage(null);
         triggerShakeAnimation();
+        return null;
       }
-      
+
     } catch (error: any) {
       console.log('❌ Error completo en registro:', error);
-      
-      // Manejo de errores de red o de petición
+
       let errorMessage = 'Error de conexión con el servidor';
-      
-      // Intentar extraer el mensaje de error de la respuesta axios
+
       if (error.response && error.response.data) {
         const errorData = error.response.data;
-        
-        // El backend podría devolver { message: "..." } incluso en errores HTTP
         if (errorData.message) {
           errorMessage = errorData.message;
         }
@@ -320,10 +318,11 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
           errorMessage = 'El servidor tardó demasiado en responder.';
         }
       }
-      
+
       setApiError(errorMessage);
       setSuccessMessage(null);
       triggerShakeAnimation();
+      return null;
     } finally {
       setLoading(false);
     }
@@ -387,20 +386,20 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
     outputRange: ['0deg', '360deg'],
   });
 
-  const isFormValid = 
-    formData.nombre && 
-    formData.apellidoPaterno && 
-    formData.apellidoMaterno && 
-    formData.email && 
-    formData.password && 
+  const isFormValid =
+    formData.nombre &&
+    formData.apellidoPaterno &&
+    formData.apellidoMaterno &&
+    formData.email &&
+    formData.password &&
     formData.confirmPassword &&
     formData.telefono &&
     formData.ci &&
-    !errors.nombre && 
-    !errors.apellidoPaterno && 
-    !errors.apellidoMaterno && 
-    !errors.email && 
-    !errors.password && 
+    !errors.nombre &&
+    !errors.apellidoPaterno &&
+    !errors.apellidoMaterno &&
+    !errors.email &&
+    !errors.password &&
     !errors.confirmPassword &&
     !errors.telefono &&
     !errors.ci;

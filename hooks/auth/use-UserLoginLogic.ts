@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 import { postRequest } from '../db.postre-connection/db.connection';
-import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Interfaces
 interface LoginFormData {
@@ -170,9 +170,9 @@ export const useUserLoginLogic = () => {
         accessToken: response.accessToken,
         message: response.message,
       };
-      
+
       await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
-      
+
       console.log('Datos de sesión guardados exitosamente');
     } catch (error) {
       console.error('Error al guardar datos de sesión:', error);
@@ -261,7 +261,7 @@ export const useUserLoginLogic = () => {
         password: formData.password,
       };
 
-      console.warn('📤 Enviando a API:', loginData);
+      console.warn(' Enviando a API:', loginData);
 
       // Llamar al endpoint de login - Usamos la unión de tipos para manejar ambos casos
       const response = await postRequest<LoginResponse | BackendErrorResponse>(
@@ -269,13 +269,13 @@ export const useUserLoginLogic = () => {
         loginData
       );
 
-      console.warn('📥 Respuesta completa:', response);
-      
+      console.warn('Respuesta completa:', response);
+
       // VERIFICACIÓN: Primero, verifica si es un error del backend
       if ('statusCode' in response && (response.statusCode ?? 0) >= 400) {
         // Es un error del backend
         let errorMessage = 'Error en el inicio de sesión';
-        
+
         if (response.message) {
           if (Array.isArray(response.message)) {
             errorMessage = response.message[0];
@@ -285,30 +285,30 @@ export const useUserLoginLogic = () => {
         } else if (response.error) {
           errorMessage = response.error;
         }
-        
+
         setApiError(errorMessage);
         triggerShakeAnimation();
-        console.warn('❌ Error del backend:', errorMessage);
+        console.warn('Error del backend:', errorMessage);
         return;
       }
-      
+
       // Si no es error, verifica si es una respuesta exitosa
       if ('accessToken' in response && response.accessToken) {
-        console.warn('✅ LOGIN EXITOSO - Token recibido');
-        
+        console.warn('LOGIN EXITOSO - Token recibido');
+
         // Guardar datos en AsyncStorage
         await saveSessionData(response as LoginResponse);
-        
+
         // Mostrar mensaje de éxito
         setSuccessMessage(response.message || 'Inicio de sesión exitoso');
         setApiError(null); // Asegurar que no haya error
-        
+
         console.warn('Datos del usuario:', {
           idUser: response.idUser,
           idRole: response.idRole,
           token: response.accessToken.substring(0, 20) + '...'
         });
-        
+
         // Animar éxito
         Animated.parallel([
           Animated.timing(fadeAnim, {
@@ -322,39 +322,39 @@ export const useUserLoginLogic = () => {
             useNativeDriver: true,
           }),
         ]).start();
-        
+
         // Redirigir basado en el rol
         setTimeout(() => {
           console.warn('Redirigiendo según rol...');
           const roleId = response.idRole;
-          
+
           if (roleId === 2) { // Administrador
-            router.replace('/views/(tabs)/management/Administracion');
+            router.replace('/views/(tabs)/admin/management/Administracion');
           } else if (roleId === 3) { // Trabajador
-            router.replace('/views/(tabs)/management/Administracion');
+            router.replace('/views/(tabs)/worker/WorkerManagement');
           } else {
             // Rol desconocido, ir a pantalla genérica
             router.replace('/views/auth/Inicio');
           }
         }, 1000);
-        
+
       } else {
         // Respuesta inesperada
-        console.warn('⚠️ Respuesta inesperada:', response);
+        console.warn('Respuesta inesperada:', response);
         setApiError('Respuesta inesperada del servidor');
         triggerShakeAnimation();
       }
-      
+
     } catch (error: any) {
       // Manejo de errores de red o de la petición
-      console.warn('❌ Error en la petición:', error);
-      
+      console.warn('Error en la petición:', error);
+
       let errorMessage = 'Error de conexión con el servidor';
-      
+
       // Intentar extraer mensaje de error de la respuesta axios
       if (error.response && error.response.data) {
         const errorData = error.response.data;
-        
+
         if (errorData.message) {
           if (Array.isArray(errorData.message)) {
             errorMessage = errorData.message[0] || errorMessage;
@@ -371,7 +371,7 @@ export const useUserLoginLogic = () => {
           errorMessage = 'El servidor tardó demasiado en responder.';
         }
       }
-      
+
       setApiError(errorMessage);
       triggerShakeAnimation();
     } finally {
@@ -398,7 +398,7 @@ export const useUserLoginLogic = () => {
       });
       setApiError(null);
       setSuccessMessage(null);
-      
+
       // Animación de fade in
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -431,10 +431,10 @@ export const useUserLoginLogic = () => {
   });
 
   // Validar si el formulario es válido
-  const isFormValid = 
-    formData.email && 
+  const isFormValid =
+    formData.email &&
     formData.password &&
-    !errors.email && 
+    !errors.email &&
     !errors.password;
 
   // Retornar todo lo necesario
@@ -446,7 +446,7 @@ export const useUserLoginLogic = () => {
     loading,
     apiError,
     successMessage,
-    
+
     // Animaciones
     animations: {
       headerSlideUp,
@@ -456,7 +456,7 @@ export const useUserLoginLogic = () => {
       shakeAnimation,
       spinInterpolate,
     },
-    
+
     // Funciones
     handleInputChange,
     handleBlur,
@@ -465,7 +465,7 @@ export const useUserLoginLogic = () => {
     logout,
     checkExistingSession,
     getCurrentUserData,
-    
+
     // Validaciones
     isFormValid,
   };
