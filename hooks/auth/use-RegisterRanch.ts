@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'; // Importamos AsyncStorage
 import { useCallback, useState } from 'react';
 import { postRequest } from '../db.postre-connection/db.connection';
 
@@ -50,12 +49,7 @@ export const useRegisterRanch = () => {
 
             setData(response);
 
-            // --- NUEVO: GUARDAR EN MEMORIA (AsyncStorage) ---
-            if (response && response.ranch) {
-                await AsyncStorage.setItem('ranchData', JSON.stringify(response.ranch));
-                console.log('💾 Datos del rancho guardados en memoria:', response.ranch.name);
-            }
-            // -----------------------------------------------
+
 
             return response;
         } catch (err: any) {

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
-import { postRequest } from '../db.postre-connection/db.connection';
+import { getRequest, postRequest } from '../db.postre-connection/db.connection';
 
 // Interfaces
 interface LoginFormData {
@@ -18,6 +18,49 @@ interface LoginResponse {
   user?: {
     email?: string;
     name?: string;
+  };
+}
+
+// Interfaz para la respuesta detallada del usuario (con estancia)
+interface UserRanchData {
+  user: {
+    id: number;
+    idRole: number;
+    ci: string;
+    fullname: string;
+    paternalSurname: string;
+    maternalSurname: string;
+    email: string;
+    celphone: string;
+    isDeleted: boolean;
+    createdAt: string;
+    updatedAt: string;
+    role: {
+      id: number;
+      name: string;
+    };
+    ranchUsers: Array<{
+      idRanch: number;
+      idUser: number;
+      ranch: {
+        id: number;
+        name: string;
+        city: {
+          id: number;
+          name: string;
+        };
+        productionType: {
+          id: number;
+          name: string;
+        };
+        createdAt: string;
+        updatedAt: string;
+      };
+      role: {
+        id: number;
+        name: string;
+      };
+    }>;
   };
 }
 
@@ -164,11 +207,8 @@ export const useUserLoginLogic = () => {
 
       // También guardar el objeto completo como JSON
       const userData = {
-        idUser: response.idUser,
-        idRole: response.idRole,
-        email: formData.email,
-        accessToken: response.accessToken,
-        message: response.message,
+        email: formData.email, // Email might not be in response
+        ...response
       };
 
       await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
@@ -296,8 +336,32 @@ export const useUserLoginLogic = () => {
       if ('accessToken' in response && response.accessToken) {
         console.warn('LOGIN EXITOSO - Token recibido');
 
-        // Guardar datos en AsyncStorage
-        await saveSessionData(response as LoginResponse);
+        // Guardar datos básicos iniciales
+
+        // Obtener datos completos del usuario y estancia ---
+        try {
+          console.warn('Obteniendo datos completos del usuario...');
+          const userDetails = await getRequest<UserRanchData>(
+            `estancia-360/users/ranches/${response.idUser}`
+          );
+
+          console.warn('Datos completos recibidos:', userDetails);
+
+          // Combinamos la respuesta del login con los detalles del usuario
+          const enhancedResponse = {
+            ...response,
+            ...userDetails // Esto sobreescribe/añade la info detallada del usuario
+          };
+
+          // Guardamos TODO en AsyncStorage
+          await saveSessionData(enhancedResponse as any);
+
+        } catch (fetchError) {
+          console.error('Error al obtener datos detallados (guardando básicos):', fetchError);
+          // Si falla el fetch extra, guardamos lo básico para no bloquear el login
+          await saveSessionData(response as LoginResponse);
+        }
+        // ------------------------------------------------------------
 
         // Mostrar mensaje de éxito
         setSuccessMessage(response.message || 'Inicio de sesión exitoso');
@@ -329,7 +393,7 @@ export const useUserLoginLogic = () => {
           const roleId = response.idRole;
 
           if (roleId === 2) { // Administrador
-            router.replace('/views/(tabs)/admin/management/Administracion');
+            router.replace('/views/(tabs)/admin/management/Management');
           } else if (roleId === 3) { // Trabajador
             router.replace('/views/(tabs)/worker/WorkerManagement');
           } else {

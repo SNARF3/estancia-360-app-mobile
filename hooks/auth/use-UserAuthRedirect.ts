@@ -56,7 +56,7 @@ export const useAuthRedirect = () => {
             router.replace('/views/(tabs)/worker/WorkerManagement');
           } else {
             // Por defecto admin o owner
-            router.replace('/views/(tabs)/admin/management/Administracion');
+            router.replace('/views/(tabs)/admin/management/Management');
           }
           return;
         }

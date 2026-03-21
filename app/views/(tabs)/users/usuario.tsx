@@ -26,18 +26,23 @@ export default function UsuarioScreen() {
     useCallback(() => {
       const loadData = async () => {
         await checkAuthStatus();
-        const role = await getUserRole();
 
-        switch (role) {
-          case 1: setRoleName('Super Admin'); break;
-          case 2: setRoleName('Administrador'); break;
-          case 3: setRoleName('Trabajador'); break;
-          default: setRoleName('Usuario');
+        if (userData?.user?.role?.name) {
+          setRoleName(userData.user.role.name);
+        } else {
+          // Fallback por si no se cargó la data completa
+          const role = await getUserRole();
+          switch (role) {
+            case 1: setRoleName('Super Admin'); break;
+            case 2: setRoleName('Administrador'); break;
+            case 3: setRoleName('Trabajador'); break;
+            default: setRoleName('Usuario');
+          }
         }
       };
 
       loadData();
-    }, [])
+    }, [userData])
   );
 
   const userStats = [
@@ -167,10 +172,10 @@ export default function UsuarioScreen() {
           </View>
         </View>
         <HeaderText variant="h1" style={styles.userName}>
-          {userData?.user?.name || userData?.name || 'Usuario'}
+          {userData?.user?.fullname || userData?.name || 'Usuario'}
         </HeaderText>
         <Text style={styles.userEmail}>
-          {userData?.email || userData?.user?.email || 'usuario@email.com'}
+          {userData?.user?.email || userData?.email || 'usuario@email.com'}
         </Text>
         <View style={styles.userBadge}>
           <Text style={styles.userBadgeText}>{roleName}</Text>

@@ -21,8 +21,14 @@ const STATIC_JOBS = [
     { id: '4', title: 'Reparación de cerca norte', status: 'Pendiente', time: '04:00 PM', priority: 'Baja' },
 ];
 
+import { useAuth } from '../../../../hooks/auth/use-Auth';
+
 export default function WorkerManagementScreen() {
     const router = useRouter();
+    const { userData } = useAuth();
+
+    // Obtener nombre de la estancia si existe
+    const ranchName = userData?.user?.ranchUsers?.[0]?.ranch?.name;
 
     const handleScanPress = () => {
         // Navegar a la pantalla del escáner creada arriba
@@ -59,7 +65,9 @@ export default function WorkerManagementScreen() {
         <SafeAreaView style={styles.container}>
             <View style={styles.headerContainer}>
                 <HeaderText variant="h2">Mis Tareas</HeaderText>
-                <Text style={styles.subtitle}>Gestión diaria de actividades</Text>
+                <Text style={styles.subtitle}>
+                    {ranchName ? `Estancia: ${ranchName}` : 'Gestión diaria de actividades'}
+                </Text>
             </View>
 
             {/* Botón Principal de Acción: Escanear Estancia */}
