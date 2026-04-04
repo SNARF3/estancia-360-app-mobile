@@ -16,7 +16,6 @@ import { ButtonPrimary } from '../../../components/common/ButtonPrimary';
 import { HeaderText } from '../../../components/common/HeaderText';
 import { InputField } from '../../../components/common/InputField';
 import { Colors, Spacing, Typography } from '../../../constants/theme';
-import { useAuthRedirect } from '../../../hooks/auth/use-UserAuthRedirect';
 import { useUserLoginLogic } from '../../../hooks/auth/use-UserLoginLogic';
 
 export default function LoginScreen() {
@@ -24,9 +23,6 @@ export default function LoginScreen() {
 
   // Estado para ver/ocultar contraseña
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
-
-  // Redirigir si ya está autenticado
-  useAuthRedirect();
 
   const {
     formData,

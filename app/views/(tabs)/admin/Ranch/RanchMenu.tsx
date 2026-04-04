@@ -58,12 +58,12 @@ export default function RanchMenu() {
                 </TouchableOpacity>
                 <View style={styles.gridContainer}>
                     <View style={styles.gridRow}>
-                        <TouchableOpacity style={styles.gridCard} onPress={() => handleNavigation('/views/UnderConstruction')}>
+                        <TouchableOpacity style={styles.gridCard} onPress={() => handleNavigation('/views/(tabs)/admin/Ranch/breeding/BreedingMenu')}>
                             <View style={styles.iconWrapper}>
                                 <Ionicons name="pulse" size={32} color={Colors.primary} />
                             </View>
                             <Text style={styles.gridTitle}>Reproducción</Text>
-                            <Text style={styles.gridSubtitle}>Kanban y Partos</Text>
+                            <Text style={styles.gridSubtitle}>Cría y Partos</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity style={styles.gridCard} onPress={() => handleNavigation('/views/UnderConstruction')}>

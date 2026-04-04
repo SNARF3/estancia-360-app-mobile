@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { ScreenContainer } from '../../../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
-import { classifyAnimal } from '../../../../../../hooks/Animals/use-AnimalClasification';
+import { classifyAnimal } from '../../../../../../hooks/Animals/offline/use-AnimalClassification';
 
 export default function DetailAnimalScreen() {
     const router = useRouter();
@@ -23,16 +23,18 @@ export default function DetailAnimalScreen() {
 
     const getBool = (val: any) => val === 'true' || val === true;
 
-    // Clasificación visual calculada desde los params
     const classification = useMemo(() => classifyAnimal({
         sex: params.sex as string,
         birthdate: params.birthdate as string,
         isCastrated: getBool(params.isCastrated),
         isSterilized: getBool(params.isSterilized),
         hasCalved: getBool(params.hasCalved),
+        id_animal_class: params.id_animal_class ? parseInt(params.id_animal_class as string) : undefined,
     }), [params]);
 
-    const handleBack = () => router.back();
+    const isOk = status.name === 'OK';
+    const statusColor = isOk ? Colors.success : Colors.error;
+    const statusBg = isOk ? Colors.successLight : Colors.errorLight;
 
     const InfoRow = ({
         label,
@@ -54,7 +56,7 @@ export default function DetailAnimalScreen() {
                 {isBool ? (
                     <View style={[
                         styles.booleanTag,
-                        { backgroundColor: getBool(value) ? Colors.successLight : Colors.errorLight }
+                        { backgroundColor: getBool(value) ? Colors.successLight : Colors.errorLight },
                     ]}>
                         <Text style={{
                             color: getBool(value) ? Colors.success : Colors.error,
@@ -71,17 +73,12 @@ export default function DetailAnimalScreen() {
         </View>
     );
 
-    const isOk = status.name === 'OK';
-    const statusColor = isOk ? Colors.success : Colors.error;
-    const statusBg = isOk ? Colors.successLight : Colors.errorLight;
-
     return (
         <View style={styles.mainContainer}>
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
-            {/* Header con fondo igual a background, como AnimalMenu */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Ficha del Animal</Text>
@@ -89,11 +86,12 @@ export default function DetailAnimalScreen() {
             </View>
 
             <ScreenContainer scrollable={true} style={styles.container}>
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
-                    {/* ── Tarjeta principal ─────────────────────────────────── */}
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.scrollContent}
+                >
+                    {/* ── Tarjeta principal ─────────────────────────────── */}
                     <View style={styles.mainCard}>
-                        {/* Fila superior: estado sanitario + clasificación */}
                         <View style={styles.badgeRow}>
                             <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
                                 <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
@@ -108,12 +106,16 @@ export default function DetailAnimalScreen() {
                             </View>
                         </View>
 
-                        {/* Código del animal */}
                         <Text style={styles.animalCode}>{params.code}</Text>
                         <Text style={styles.breedName}>{breed.name || 'Raza no definida'}</Text>
 
-                        {/* ── Bloque de clasificación destacado ─────────────── */}
-                        <View style={[styles.classificationBlock, { backgroundColor: classification.backgroundColor, borderColor: classification.color + '40' }]}>
+                        <View style={[
+                            styles.classificationBlock,
+                            {
+                                backgroundColor: classification.backgroundColor,
+                                borderColor: classification.color + '40',
+                            },
+                        ]}>
                             <View style={styles.classificationIconWrap}>
                                 <Ionicons
                                     name={
@@ -135,7 +137,6 @@ export default function DetailAnimalScreen() {
                             </View>
                         </View>
 
-                        {/* Stats rápidos */}
                         <View style={styles.quickStats}>
                             <View style={styles.statItem}>
                                 <Text style={styles.statLabel}>PESO</Text>
@@ -144,12 +145,14 @@ export default function DetailAnimalScreen() {
                             <View style={styles.statDivider} />
                             <View style={styles.statItem}>
                                 <Text style={styles.statLabel}>SEXO</Text>
-                                <Text style={styles.statValue}>{params.sex === 'M' ? '♂ Macho' : '♀ Hembra'}</Text>
+                                <Text style={styles.statValue}>
+                                    {params.sex === 'M' ? '♂ Macho' : '♀ Hembra'}
+                                </Text>
                             </View>
                         </View>
                     </View>
 
-                    {/* ── Genealogía ────────────────────────────────────────── */}
+                    {/* ── Genealogía ────────────────────────────────────── */}
                     <View style={styles.sectionCard}>
                         <Text style={styles.sectionHeader}>GENEALOGÍA Y REGISTRO</Text>
                         <InfoRow
@@ -161,7 +164,7 @@ export default function DetailAnimalScreen() {
                         <InfoRow label="ID Padre" value={params.idFather as string} icon="male-sharp" />
                     </View>
 
-                    {/* ── Estado reproductivo ───────────────────────────────── */}
+                    {/* ── Estado reproductivo ───────────────────────────── */}
                     <View style={styles.sectionCard}>
                         <Text style={styles.sectionHeader}>ESTADO REPRODUCTIVO</Text>
                         <InfoRow label="Castrado" value={params.isCastrated} icon="cut-outline" isBool />
@@ -170,7 +173,6 @@ export default function DetailAnimalScreen() {
                             <InfoRow label="Ha parido" value={params.hasCalved} icon="git-branch-outline" isBool />
                         )}
                     </View>
-
                 </ScrollView>
             </ScreenContainer>
         </View>
@@ -180,8 +182,6 @@ export default function DetailAnimalScreen() {
 const styles = StyleSheet.create({
     mainContainer: { flex: 1, backgroundColor: Colors.background },
     container: { flex: 1 },
-
-    // Header igual que AnimalMenu (background, no blanco)
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -193,10 +193,8 @@ const styles = StyleSheet.create({
     },
     backButton: { padding: 5 },
     headerTitle: { ...Typography.h3, color: Colors.primary, fontWeight: '800' },
-
     scrollContent: { padding: Spacing.lg },
 
-    // Main card
     mainCard: {
         backgroundColor: Colors.white,
         borderRadius: BorderRadius.xl,
@@ -222,17 +220,11 @@ const styles = StyleSheet.create({
     },
     statusDot: { width: 6, height: 6, borderRadius: 3 },
     statusBadgeText: { fontSize: 11, fontWeight: '800' },
-    categoryBadge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: BorderRadius.sm,
-    },
+    categoryBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: BorderRadius.sm },
     categoryBadgeText: { fontSize: 11, fontWeight: '800' },
-
     breedName: { ...Typography.overline, color: Colors.textSecondary, letterSpacing: 1.5, marginTop: 4 },
     animalCode: { ...Typography.h1, color: Colors.primary, fontSize: 40, fontWeight: '900' },
 
-    // Bloque de clasificación
     classificationBlock: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -244,27 +236,15 @@ const styles = StyleSheet.create({
         gap: Spacing.md,
     },
     classificationIconWrap: {
-        width: 40,
-        height: 40,
+        width: 40, height: 40,
         borderRadius: 10,
         backgroundColor: Colors.white + '80',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    classificationCategory: {
-        fontSize: 10,
-        fontWeight: '900',
-        letterSpacing: 1,
-        textTransform: 'uppercase',
-        opacity: 0.7,
-    },
-    classificationLabel: {
-        fontSize: 15,
-        fontWeight: '800',
-        marginTop: 1,
-    },
+    classificationCategory: { fontSize: 10, fontWeight: '900', letterSpacing: 1, textTransform: 'uppercase', opacity: 0.7 },
+    classificationLabel: { fontSize: 15, fontWeight: '800', marginTop: 1 },
 
-    // Quick stats
     quickStats: {
         flexDirection: 'row',
         marginTop: Spacing.lg,
@@ -278,7 +258,6 @@ const styles = StyleSheet.create({
     statLabel: { fontSize: 10, color: Colors.textDisabled, fontWeight: '700' },
     statValue: { fontSize: 16, color: Colors.primary, fontWeight: '800' },
 
-    // Section cards
     sectionCard: {
         backgroundColor: Colors.white,
         borderRadius: BorderRadius.lg,
@@ -296,12 +275,9 @@ const styles = StyleSheet.create({
         borderLeftColor: Colors.primary,
         paddingLeft: 10,
     },
-
-    // Info rows
     infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md },
     iconContainer: {
-        width: 36,
-        height: 36,
+        width: 36, height: 36,
         borderRadius: 10,
         backgroundColor: Colors.background,
         alignItems: 'center',

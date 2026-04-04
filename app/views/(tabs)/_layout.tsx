@@ -70,6 +70,13 @@ export default function TabLayout() {
           tabBarStyle: { display: 'none' }
         }}
       />
+      <Tabs.Screen
+        name="admin/Ranch/breeding"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' }
+        }}
+      />
     </Tabs>
   );
 }

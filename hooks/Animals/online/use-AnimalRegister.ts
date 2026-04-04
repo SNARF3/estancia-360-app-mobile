@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useAuth } from '../auth/use-Auth';
-import { postRequest } from '../db.postre-connection/db.connection';
+import { useAuth } from '../../auth/use-Auth';
+import { postRequest } from '../../db.postre-connection/db.connection';
 
 interface AnimalRegistrationData {
     idRanch: number;

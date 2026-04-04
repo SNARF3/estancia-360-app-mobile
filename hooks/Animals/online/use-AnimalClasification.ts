@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Colors } from '../../constants/theme';
+import { Colors } from '../../../constants/theme';
 import { Animal } from './use-GetListAnimals';
 
 export type AnimalCategory = 'Ternero' | 'Destetado' | 'Adulto';

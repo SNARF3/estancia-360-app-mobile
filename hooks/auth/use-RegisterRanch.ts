@@ -5,22 +5,25 @@ import { postRequest } from '../db.postre-connection/db.connection';
 export interface RegisterRanchPayload {
     idUser: number;
     idCity: number;
-    idProductionType: number;
+    idProductionTypes: number[];
     name: string;
 }
 
 // 2. Interfaces de la RESPUESTA del backend
-export interface RanchResponseData { // Exportamos esta interfaz para reusarla
+export interface RanchResponseData {
     id: number;
     name: string;
     city: {
         id: number;
         name: string;
     };
-    productionType: {
-        id: number;
-        name: string;
-    };
+    productionTypes: Array<{
+        idProductionType: number;
+        productionType: {
+            id: number;
+            name: string;
+        }
+    }>;
     createdAt: string;
     updatedAt: string;
 }

@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-
 import { ScreenContainer } from '../../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 import { useAuth } from '../../../../../hooks/auth/use-Auth';
@@ -11,35 +10,26 @@ import { useAuth } from '../../../../../hooks/auth/use-Auth';
 export default function AdministracionScreen() {
   const router = useRouter();
   const { userData } = useAuth();
-  const [userName, setUserName] = useState('Juan');
-
+  
+  const [userName, setUserName] = useState('');
   const [ranchName, setRanchName] = useState('Estancia: ---');
   const [productionType, setProductionType] = useState('');
   const [locationName, setLocationName] = useState('');
 
   useEffect(() => {
-    if (userData?.user) {
+    if (userData) {
+      console.log('Cargando datos de sesión en Management:', userData);
       // 1. Nombre del Usuario
-      if (userData.user.fullname) {
-        setUserName(userData.user.fullname);
-      } else if (userData.user.name) {
-        setUserName(userData.user.name);
-      } else if (userData.email) {
-        setUserName(userData.email.split('@')[0]);
-      }
+      setUserName(userData.fullname || userData.email || 'Usuario');
 
-      // 2. Datos de la Estancia (Tomamos la primera si existe)
-      if (userData.user.ranchUsers && userData.user.ranchUsers.length > 0) {
-        const firstRanch = userData.user.ranchUsers[0].ranch;
-        if (firstRanch) {
-          setRanchName(firstRanch.name);
-          setProductionType(firstRanch.productionType?.name || '');
-          setLocationName(firstRanch.city?.name || '');
-        }
+      // 2. Datos de la Estancia
+      if (userData.ranch_name) {
+        setRanchName(userData.ranch_name);
       }
-    } else if (userData?.name) {
-      // Fallback para estructura antigua
-      setUserName(userData.name);
+      
+      // Fallback details if available
+      setLocationName(''); 
+      setProductionType('');
     }
   }, [userData]);
 
@@ -48,7 +38,7 @@ export default function AdministracionScreen() {
     {
       icon: 'leaf',
       label: 'Mi estancia',
-      route: '/views/(tabs)/admin/Ranch/RanchMenu',
+      route: '/views/(tabs)/admin/Ranch/breeding/BreedingMenu',
     },
     {
       icon: 'create',

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../auth/use-Auth';
-import { getRequest } from '../db.postre-connection/db.connection';
+import { useAuth } from '../../auth/use-Auth';
+import { getRequest } from '../../db.postre-connection/db.connection';
 
 export interface Animal {
     id: number;

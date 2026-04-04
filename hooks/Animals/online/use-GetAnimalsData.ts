@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getRequest } from '../db.postre-connection/db.connection';
+import { getRequest } from '../../db.postre-connection/db.connection';
 
 export interface AnimalBreed {
     id: number;

@@ -73,9 +73,12 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descrip
 
   const tabs = role === 3 ? workerTabs : adminTabs;
 
-  // Check if tab bar should be hidden for the current route
+  // Check if tab bar should be hidden for current modules (Animals, Breeding, or explicit display:none)
   const { options } = descriptors[state.routes[state.index].key];
-  if (options.tabBarStyle?.display === 'none') {
+  const isHiddenModule = pathname.includes('/admin/Ranch/Animals') || 
+                         pathname.includes('/admin/Ranch/breeding');
+
+  if (options.tabBarStyle?.display === 'none' || isHiddenModule) {
     return null;
   }
 
