@@ -20,18 +20,16 @@ import { showMessage } from 'react-native-flash-message';
 import { ButtonPrimary } from '../../../components/common/ButtonPrimary';
 import { HeaderText } from '../../../components/common/HeaderText';
 import { InputField } from '../../../components/common/InputField';
+import { constants } from '../../../constants/constants';
 import { Colors, Spacing, Typography } from '../../../constants/theme';
 
-// HOOKS (La lógica de negocio viene de aquí)
+// HOOKS
+import { saveSession } from '../../../hooks/auth/use-Auth';
 import { useRegisterRanch } from '../../../hooks/auth/use-RegisterRanch';
-import { useUserRegisterLogic } from '../../../hooks/auth/use-UserRegisterLogic'; // <--- Importamos lógica de usuario
+import { useUserRegisterLogic } from '../../../hooks/auth/use-UserRegisterLogic';
 import { LocationItem, useLocationData } from '../../../hooks/constants/use-LotationData';
 
-const PRODUCTION_TYPES = [
-    { id: 1, name: 'Cría' }
-];
-
-// --- Select Component Reutilizable (Sin cambios) ---
+// --- Select Component Reutilizable ---
 const CustomSelect = ({ label, value, options, onSelect, disabled = false, placeholder = "Seleccionar" }: any) => {
     const [modalVisible, setModalVisible] = useState(false);
     return (
@@ -70,54 +68,110 @@ const CustomSelect = ({ label, value, options, onSelect, disabled = false, place
     );
 };
 
+// --- MultiSelect Component Reutilizable ---
+const MultiSelect = ({ label, selectedItems, options, onToggle, disabled = false, placeholder = "Seleccionar varios" }: any) => {
+    const [modalVisible, setModalVisible] = useState(false);
+
+    const isSelected = (id: number) => selectedItems.some((item: any) => item.id === id);
+
+    const getDisplayText = () => {
+        if (selectedItems.length === 0) return placeholder;
+        if (selectedItems.length <= 2) return selectedItems.map((s: any) => s.name).join(', ');
+        return `${selectedItems.length} seleccionados`;
+    };
+
+    return (
+        <View style={{ marginBottom: Spacing.md }}>
+            <Text style={styles.inputLabel}>{label}</Text>
+            <TouchableOpacity
+                style={[styles.selectButton, disabled && styles.disabledInput]}
+                onPress={() => !disabled && setModalVisible(true)}
+                activeOpacity={0.7}
+            >
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                    <Text
+                        numberOfLines={1}
+                        style={[styles.selectText, selectedItems.length === 0 && { color: Colors.textSecondary }]}
+                    >
+                        {getDisplayText()}
+                    </Text>
+                </View>
+                <Ionicons name="list" size={18} color={Colors.textSecondary} />
+            </TouchableOpacity>
+
+            <Modal visible={modalVisible} transparent animationType="fade">
+                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>{label}</Text>
+                        <FlatList
+                            data={options}
+                            keyExtractor={(item) => item.id.toString()}
+                            renderItem={({ item }) => {
+                                const selected = isSelected(item.id);
+                                return (
+                                    <TouchableOpacity
+                                        style={[styles.optionItem, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+                                        onPress={() => onToggle(item)}
+                                    >
+                                        <Text style={[styles.optionText, selected && { color: Colors.primary, fontWeight: 'bold' }]}>
+                                            {item.name}
+                                        </Text>
+                                        {selected && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
+                                    </TouchableOpacity>
+                                );
+                            }}
+                        />
+                        <TouchableOpacity
+                            style={styles.doneButton}
+                            onPress={() => setModalVisible(false)}
+                        >
+                            <Text style={styles.doneButtonText}>Listo</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+        </View>
+    );
+};
+
 export default function RegisterRanchScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
 
-    // 1. Obtener datos crudos pasados desde la pantalla anterior
     const rawUserData = params.userData ? JSON.parse(params.userData as string) : null;
-    const roleId = rawUserData?.roleId || 2; // Por defecto dueño
+    const roleId = rawUserData?.roleId || 2;
 
-    // 2. Instanciar Hooks
     const { countries, regions, cities, loading: loadingLocs, fetchCountries, fetchRegions, fetchCities } = useLocationData();
     const { registerRanch, loading: loadingRanch } = useRegisterRanch();
+    const { handleInputChange, handleRegister, loading: loadingUser } = useUserRegisterLogic(roleId);
 
-    // Instanciamos el hook de lógica de usuario
-    // NOTA: Usamos este hook para registrar al usuario antes de registrar la estancia
-    const {
-        handleInputChange,
-        handleRegister,
-        loading: loadingUser
-    } = useUserRegisterLogic(roleId);
-
-    // Estados Locales para el formulario de Estancia
+    // Estados Locales
     const [ranchName, setRanchName] = useState('');
     const [selectedCountry, setSelectedCountry] = useState<LocationItem | null>(null);
     const [selectedRegion, setSelectedRegion] = useState<LocationItem | null>(null);
     const [selectedCity, setSelectedCity] = useState<LocationItem | null>(null);
-    const [selectedProduction, setSelectedProduction] = useState<any>(null);
+    const [selectedProductionTypes, setSelectedProductionTypes] = useState<any[]>([]);
 
-    // Efecto de inicialización: Cargar países y "Hidratar" el hook de usuario
+    const toggleProductionType = (type: any) => {
+        setSelectedProductionTypes(prev =>
+            prev.some(it => it.id === type.id)
+                ? prev.filter(it => it.id !== type.id)
+                : [...prev, type]
+        );
+    };
+
     useEffect(() => {
         if (!rawUserData) {
             Alert.alert('Error crítico', 'No se recibieron datos del usuario.');
             router.back();
             return;
         }
-
-        // Cargamos ubicaciones
         fetchCountries();
-
-        // IMPORTANTE: Pasamos los datos recibidos por params al estado interno del hook useUserRegisterLogic
-        // Esto "prepara" el hook para que cuando llamemos a handleRegister, tenga los datos listos.
         Object.keys(rawUserData).forEach((key) => {
-            // Mapeamos los campos que coinciden con la interfaz del hook
             handleInputChange(key as any, rawUserData[key]);
         });
-
     }, []);
 
-    // Manejo de selectores de ubicación
     const handleSelectCountry = (c: LocationItem) => {
         setSelectedCountry(c); setSelectedRegion(null); setSelectedCity(null); fetchRegions(c.id);
     };
@@ -125,58 +179,62 @@ export default function RegisterRanchScreen() {
         setSelectedRegion(r); setSelectedCity(null); fetchCities(r.id);
     };
 
-    // --- PROCESO DE REGISTRO ORQUESTADO ---
     const handleFinalRegister = async () => {
-        // 1. Validaciones locales de estancia
-        if (!ranchName || !selectedCountry || !selectedRegion || !selectedCity || !selectedProduction) {
-            showMessage({ message: 'Faltan datos', description: 'Completa todos los campos de la estancia.', type: 'warning' });
+        if (!ranchName || !selectedCountry || !selectedRegion || !selectedCity || selectedProductionTypes.length === 0) {
+            showMessage({ message: 'Faltan datos', description: 'Completa todos los campos.', type: 'warning' });
             return;
         }
 
         try {
-            console.log(' [Paso 1] Registrando Usuario usando el Hook...');
+            console.log(' [Paso 1] Registrando Usuario...');
+            const userRegisterResponse = await handleRegister();
 
-            // 2. Llamamos al hook de usuario para registrar
-            // El hook se encarga de conectar a la BD y validaciones de usuario
-            const userResponse = await handleRegister();
+            if (!userRegisterResponse?.user?.id) return;
 
-            // Verificamos si nos devolvió un usuario válido
-            // Ajusta 'userResponse?.user?.id' según la estructura exacta que retorne tu hook actualizado
-            const createdUserId = userResponse?.user?.id;
+            console.log('Usuario creado ID:', userRegisterResponse.user.id);
+            console.log('[Paso 2] Registrando Estancia...');
 
-            if (!createdUserId) {
-                // Si el hook no lanza error pero tampoco devuelve ID, detenemos
-                console.error("No se obtuvo ID del usuario", userResponse);
-                return;
-            }
-
-            console.log('Usuario creado ID:', createdUserId);
-            console.log('[Paso 2] Registrando Estancia usando el Hook...');
-
-            // 3. Preparamos payload de estancia
             const ranchPayload = {
-                idUser: createdUserId,
+                idUser: userRegisterResponse.user.id,
                 idCity: selectedCity.id,
-                idProductionType: selectedProduction.id,
+                idProductionTypes: selectedProductionTypes.map(pt => pt.id),
                 name: ranchName
             };
 
-            // 4. Llamamos al hook de estancia
-            await registerRanch(ranchPayload);
+            const ranchRegisterResponse = await registerRanch(ranchPayload);
 
-            console.log('✅ Estancia creada exitosamente.');
+            if (ranchRegisterResponse && ranchRegisterResponse.ranch) {
+                console.log('✅ Estancia creada exitosamente.');
 
-            // 5. Finalización
-            showMessage({ message: '¡Registro Exitoso!', description: 'Bienvenido a Estancia 360', type: 'success' });
-            await AsyncStorage.removeItem('selectedRoleId');
+                // Segun tu requerimiento, guardamos la sesión usando los datos directamente de las respuestas
+                // NOTA: Si el backend no devuelve un accessToken en el registro, 
+                // se debería invocar el login o usar un token temporal.
+                // Por ahora, asumimos que el flujo guardará lo que tenga disponible.
 
-            // Navegación segura
-            setTimeout(() => router.replace('/views/auth/Login'), 1500);
+                const user = userRegisterResponse.user;
+                const ranch = ranchRegisterResponse.ranch;
+
+                await saveSession({
+                    accessToken: '',
+                    idUser: user.id,
+                    idRole: user.idRole,
+                    email: user.email,
+                    fullname: user.fullname,
+                    id_ranch: ranch.id,
+                    ranch_name: ranch.name,
+                    production_types: ranch.productionTypes.map(pt => pt.productionType.id),
+                    ranch_role: user.idRole,
+                });
+
+                showMessage({ message: '¡Registro Exitoso!', description: 'Bienvenido a Estancia 360', type: 'success' });
+                await AsyncStorage.removeItem('selectedRoleId');
+
+                // Si ya guardamos sesión, podemos ir directo al Home
+                setTimeout(() => router.replace('/views/(tabs)/admin/management/Management'), 1500);
+            }
 
         } catch (error: any) {
-            console.error('❌ Error en el proceso orquestado:', error);
-            // Nota: El manejo de errores UI (Alertas/Toast) ya suele estar dentro de los hooks,
-            // pero si necesitas algo específico, lo pones aquí.
+            console.error('❌ Error en el proceso:', error);
             const msg = error?.response?.data?.message || error.message || "Error desconocido";
             showMessage({ message: "Error", description: msg, type: "danger" });
         }
@@ -228,12 +286,13 @@ export default function RegisterRanchScreen() {
                         disabled={!selectedRegion || isSubmitting}
                         placeholder="Seleccionar Ciudad"
                     />
-                    <CustomSelect
+                    <MultiSelect
                         label="Tipo de Producción"
-                        value={selectedProduction?.name}
-                        options={PRODUCTION_TYPES}
-                        onSelect={setSelectedProduction}
+                        selectedItems={selectedProductionTypes}
+                        options={constants.PRODUCTION_TYPES}
+                        onToggle={toggleProductionType}
                         disabled={isSubmitting}
+                        placeholder="Uno o varios tipos"
                     />
                 </View>
 
@@ -266,5 +325,7 @@ const styles = StyleSheet.create({
     modalContent: { backgroundColor: Colors.background, borderRadius: 16, padding: Spacing.lg, maxHeight: '60%' },
     modalTitle: { ...Typography.h3, textAlign: 'center', marginBottom: Spacing.lg, color: Colors.primary },
     optionItem: { paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border },
-    optionText: { ...Typography.body, textAlign: 'center', color: Colors.textPrimary },
+    optionText: { ...Typography.body, textAlign: 'left', color: Colors.textPrimary },
+    doneButton: { backgroundColor: Colors.primary, borderRadius: 12, padding: Spacing.md, marginTop: Spacing.md, alignItems: 'center' },
+    doneButtonText: { ...Typography.body, fontWeight: 'bold', color: '#fff' },
 });

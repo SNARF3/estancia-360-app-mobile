@@ -1,17 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Colors, Typography } from '../../constants/theme';
+import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/theme';
 import { useAuth } from '../../hooks/auth/use-Auth';
-import { useNavigation } from '../../hooks/navigation/use-navigation';
+
+interface TabItem {
+  name: string;
+  label: string;
+  icon: string;
+  route: any;
+  isCentral?: boolean;
+}
 
 interface TabBarProps {
   state: any;
   navigation: any;
+  descriptors: any;
 }
 
-export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
-  const { navigate } = useNavigation();
+import { usePathname, useRouter } from 'expo-router';
+
+export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descriptors }) => {
+  const router = useRouter();
+  const pathname = usePathname();
   const { getUserRole } = useAuth();
   const [role, setRole] = React.useState<number | null>(null);
 
@@ -23,75 +34,80 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     fetchRole();
   }, []);
 
-  const adminTabs = [
+  const adminTabs: TabItem[] = [
     {
-      name: 'administracion',
+      name: 'admin',
       label: 'Administración',
       icon: 'business',
-      route: '/views/(tabs)/admin/management/Administracion' as const,
+      route: '/views/(tabs)/admin/management/Management',
     },
     {
-      name: 'agregar',
-      label: '',
-      icon: 'add-circle',
-      route: '/views/(tabs)/admin/management/Agregar' as const,
-      isCentral: true,
-    },
-    {
-      name: 'usuario',
+      name: 'users',
       label: 'Usuario',
       icon: 'person',
-      route: '/views/(tabs)/users/usuario' as const,
+      route: '/views/(tabs)/users/usuario',
     },
   ];
 
-  const workerTabs = [
+  const workerTabs: TabItem[] = [
     {
-      name: 'inicio',
+      name: 'WorkerManagement',
       label: 'Inicio',
       icon: 'home',
-      route: '/views/(tabs)/worker/WorkerManagement' as const,
+      route: '/views/(tabs)/worker/WorkerManagement',
     },
     {
-      name: 'scanner',
+      name: 'QrScannerRanch',
       label: '',
       icon: 'scan',
-      route: '/views/(tabs)/worker/QrScannerRanch' as const,
+      route: '/views/(tabs)/worker/QrScannerRanch',
       isCentral: true,
     },
     {
-      name: 'usuario',
+      name: 'users',
       label: 'Usuario',
       icon: 'person',
-      route: '/views/(tabs)/users/usuario' as const,
+      route: '/views/(tabs)/users/usuario',
     },
   ];
 
-  // Role 3 is Worker, otherwise Admin
   const tabs = role === 3 ? workerTabs : adminTabs;
+
+  // Check if tab bar should be hidden for current modules (Animals, Breeding, or explicit display:none)
+  const { options } = descriptors[state.routes[state.index].key];
+  const isHiddenModule = pathname.includes('/admin/Ranch/Animals') || 
+                         pathname.includes('/admin/Ranch/breeding');
+
+  if (options.tabBarStyle?.display === 'none' || isHiddenModule) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.background} />
 
-      {tabs.map((tab, index) => {
-        // Simple focus logic based on index might happen to work if the number of tabs is the same
-        // But better is to just let it be for now since existing code used index.
-        // Ideally we match by route name but standard tab bars often use index.
-        const isFocused = state.index === index;
+      {tabs.map((tab) => {
+        // Focus logic based on pathname substrings (more robust for Expo Router)
+        const isFocused = pathname.includes(tab.name);
+
+        const onPress = () => {
+          if (!isFocused) {
+            router.push(tab.route);
+          }
+        };
 
         if (tab.isCentral) {
           return (
             <View key={tab.name} style={styles.centralTabContainer}>
               <TouchableOpacity
                 style={styles.centralTab}
-                onPress={() => navigate(tab.route)}
+                onPress={onPress}
                 activeOpacity={0.8}
               >
                 <View style={styles.centralTabBackground}>
                   <Ionicons
                     name={tab.icon === 'scan' ? 'qr-code' : 'add'}
-                    size={32}
+                    size={Typography.floatingIcon.fontSize}
                     color={Colors.white}
                   />
                 </View>
@@ -104,7 +120,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
           <TouchableOpacity
             key={tab.name}
             style={styles.tab}
-            onPress={() => navigate(tab.route)}
+            onPress={onPress}
             activeOpacity={0.7}
           >
             <View style={[
@@ -113,15 +129,15 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
             ]}>
               <Ionicons
                 name={tab.icon as any}
-                size={24}
-                color={isFocused ? Colors.primarySolid : Colors.textSecondary}
+                size={Typography.tabIcon.fontSize}
+                color={isFocused ? Colors.tabActive : Colors.tabInactive}
               />
             </View>
             <Text
               style={[
                 styles.tabLabel,
                 {
-                  color: isFocused ? Colors.primarySolid : Colors.textSecondary,
+                  color: isFocused ? Colors.tabActive : Colors.tabInactive,
                 },
               ]}
             >
@@ -137,15 +153,15 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: 'transparent',
-    height: 80, // Altura más equilibrada
-    paddingBottom: 8,
-    marginBottom: 14,
-    paddingTop: 12,
+    backgroundColor: Colors.transparent,
+    height: Spacing.tabBarHeight,
+    paddingBottom: Spacing.tabBarPaddingBottom,
+    marginBottom: Spacing.md + 4,
+    paddingTop: Spacing.tabBarPaddingTop,
     alignItems: 'center',
     justifyContent: 'space-around',
     position: 'relative',
-    marginHorizontal: 16,
+    marginHorizontal: Spacing.tabBarPadding,
   },
   background: {
     position: 'absolute',
@@ -153,45 +169,35 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: Colors.backgroundSolid,
-    borderRadius: 20, // Bordes ligeramente menos redondeados
-    // SOLO SOMBRA - SIN BORDE
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2, // Sombra más sutil hacia arriba
-    },
-    shadowOpacity: 0.08, // Más sutil
-    shadowRadius: 8, // Menos difuminado
-    elevation: 6,
+    backgroundColor: Colors.tabBarBackground,
+    borderRadius: BorderRadius.tabBar,
+    ...Shadows.tabBar,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center', // Centrado vertical
-    paddingVertical: 4,
+    justifyContent: 'center',
+    paddingVertical: Spacing.xs,
     zIndex: 1,
   },
   tabIconContainer: {
-    padding: 8,
-    borderRadius: 12,
-    marginBottom: 4,
-    backgroundColor: 'transparent',
+    padding: Spacing.tabIconPadding,
+    borderRadius: BorderRadius.tabIcon,
+    marginBottom: Spacing.tabLabelMargin,
+    backgroundColor: Colors.transparent,
   },
   tabIconContainerActive: {
-    backgroundColor: Colors.primarySolid + '10', // Más sutil
+    backgroundColor: Colors.tabActiveBackground,
   },
   tabLabel: {
-    ...Typography.overline,
-    fontSize: 10,
-    fontWeight: '500',
+    ...Typography.tabLabel,
   },
   centralTabContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 80,
-    height: 80,
-    marginTop: -1, // Elevación equilibrada
+    width: Spacing.tabBarHeight,
+    height: Spacing.tabBarHeight,
+    marginTop: -1,
     zIndex: 2,
   },
   centralTab: {
@@ -199,23 +205,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   centralTabBackground: {
-    width: 60, // Tamaño más equilibrado
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.primarySolid,
+    width: Spacing.floatingButtonSize,
+    height: Spacing.floatingButtonSize,
+    borderRadius: BorderRadius.floatingButton,
+    backgroundColor: Colors.floatingButton,
     alignItems: 'center',
     justifyContent: 'center',
-    // Sombra equilibrada
-    shadowColor: Colors.primarySolid,
-    shadowOffset: {
-      width: 0,
-      height: 4, // Menos elevación
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-    // Borde equilibrado
-    borderWidth: 3,
-    borderColor: Colors.white,
+    ...Shadows.floatingButton,
+    borderWidth: Spacing.floatingButtonBorder,
+    borderColor: Colors.floatingButtonBorder,
   },
 });

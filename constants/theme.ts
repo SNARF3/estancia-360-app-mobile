@@ -22,6 +22,11 @@ export const Colors = {
   backgroundDarkSolid: '#243453', // Azul Marino Oscuro sólido
   white: '#FFFFFF',
 
+  // Transparencias y Overlays
+  whiteOverlay: 'rgba(255, 255, 255, 0.3)',
+  whiteSecondary: 'rgba(255, 255, 255, 0.8)',
+  transparent: 'transparent',
+
   // Estados
   hover: '#7aa641',          // Verde Oliva Medio para hover
 

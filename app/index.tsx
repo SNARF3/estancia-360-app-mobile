@@ -1,5 +1,6 @@
 import { Redirect } from 'expo-router';
+import 'react-native-get-random-values';
 
 export default function Index() {
-  return <Redirect href={"/views/auth/Inicio" as any }/>;
+  return <Redirect href={"/views/auth/Inicio" as any} />;
 }
