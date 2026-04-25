@@ -42,22 +42,48 @@ function mapCategory(raw: string | null | undefined, sex: 'M' | 'F' | null): num
     return sex === 'F' ? 8 : 10;
 }
 
-/** FECHA: acepta string ISO "YYYY-MM-DD", Date de JS, número serial Excel */
+/** FECHA: acepta string "DD/MM/YYYY", ISO "YYYY-MM-DD", Date de JS, número serial Excel */
 function mapDate(raw: any): string | null {
     if (!raw) return null;
-    // Ya es string ISO
-    if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.split('T')[0];
-    // Es objeto Date (xlsx lo parsea así cuando detecta fecha)
-    if (raw instanceof Date) return raw.toISOString().split('T')[0];
-    // Número serial Excel (días desde 1/1/1900)
+
+    // 1. Si es número (serial Excel)
     if (typeof raw === 'number') {
         const d = new Date(Math.round((raw - 25569) * 86400 * 1000));
         return d.toISOString().split('T')[0];
     }
-    // Intento de parseo genérico
+
+    // 2. Si es objeto Date
+    if (raw instanceof Date) {
+        if (isNaN(raw.getTime())) return null;
+        return raw.toISOString().split('T')[0];
+    }
+
+    if (typeof raw === 'string') {
+        const str = raw.trim();
+        // 3. Formato DD/MM/YYYY
+        const ddmmyyyy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(str);
+        if (ddmmyyyy) {
+            const [_, d, m, y] = ddmmyyyy;
+            const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+            if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+        }
+
+        // 4. Formato ISO YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.split('T')[0];
+    }
+
+    // 5. Intento de parseo genérico
     const d = new Date(raw);
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+
     return null;
+}
+
+/** Calcula fecha de nacimiento aproximada desde edad en meses */
+function ageToBirthdate(months: number): string {
+    const d = new Date();
+    d.setMonth(d.getMonth() - Math.round(months));
+    return d.toISOString().split('T')[0];
 }
 
 /** PESO: acepta número o string con coma/punto */
@@ -77,6 +103,8 @@ export interface RawAnimalRow {
     category_raw: string | null;
     breed_raw: string | null;
     birthdate_raw: any;
+    age_months_raw: any;
+    lot_name_raw: string | null;
     weight_raw: any;
 }
 
@@ -87,6 +115,8 @@ export interface ValidatedAnimalRow {
     id_animal_class: number;
     id_breed: number;      // siempre 1 por ahora
     birthdate: string;      // ISO date
+    id_lot: string | null;  // UUID del lote si se encontró por nombre
+    lot_name: string | null; // nombre original del lote para mostrar
     weight: number | null;
     // Errores de validación
     errors: string[];
@@ -157,6 +187,8 @@ export function useBulkImportAnimals() {
                     category_raw: r[2] ? r[2].toString().trim() : null,
                     breed_raw: r[3] ? r[3].toString().trim() : null,
                     birthdate_raw: r[4],
+                    age_months_raw: r[5],
+                    lot_name_raw: r[6] ? r[6].toString().trim() : null,
                     weight_raw: r[7],
                 }));
 
@@ -166,12 +198,19 @@ export function useBulkImportAnimals() {
             if (!session) { setErrorMsg('No hay sesión activa.'); setStep('error'); return; }
             const db = await getDb();
 
-            // Códigos ya existentes en la estancia (para detectar duplicados)
-            const existingCodes = new Set<string>(
-                (await db.getAllAsync<{ code: string }>(
+            // Códigos ya existentes y lotes de la estancia
+            const [existingCodesRows, lotRows] = await Promise.all([
+                db.getAllAsync<{ code: string }>(
                     `SELECT code FROM ranch_animals WHERE id_ranch = ?`, [session.id_ranch]
-                )).map(r => r.code)
-            );
+                ),
+                db.getAllAsync<{ id: string, name: string }>(
+                    `SELECT id, name FROM ranch_lots WHERE id_ranch = ?`, [session.id_ranch]
+                )
+            ]);
+
+            const existingCodes = new Set<string>(existingCodesRows.map(r => r.code));
+            const lotMap = new Map<string, string>(); // name -> id
+            lotRows.forEach(l => lotMap.set(l.name.toLowerCase().trim(), l.id));
 
             setProgress(75);
 
@@ -179,14 +218,29 @@ export function useBulkImportAnimals() {
             const validated: ValidatedAnimalRow[] = rawRows.map(raw => {
                 const errors: string[] = [];
                 const sex = mapSex(raw.sex_raw);
-                const birthdate = mapDate(raw.birthdate_raw);
+                let birthdate = mapDate(raw.birthdate_raw);
                 const weight = mapWeight(raw.weight_raw);
                 const id_animal_class = mapCategory(raw.category_raw, sex);
+
+                // Si no hay fecha pero hay edad en meses, calcularla
+                const ageMonths = parseFloat(raw.age_months_raw);
+                if (!birthdate && !isNaN(ageMonths) && ageMonths >= 0) {
+                    birthdate = ageToBirthdate(ageMonths);
+                }
+
+                // Resolver lote por nombre
+                let id_lot: string | null = null;
+                if (raw.lot_name_raw) {
+                    id_lot = lotMap.get(raw.lot_name_raw.toLowerCase().trim()) || null;
+                    if (!id_lot && raw.lot_name_raw.trim() !== '') {
+                        errors.push(`Lote "${raw.lot_name_raw}" no existe en el sistema`);
+                    }
+                }
 
                 if (!raw.code) errors.push('Código vacío');
                 else if (existingCodes.has(raw.code)) errors.push(`Código "${raw.code}" ya existe`);
                 if (!sex) errors.push(`Sexo inválido: "${raw.sex_raw}"`);
-                if (!birthdate) errors.push(`Fecha inválida: "${raw.birthdate_raw}"`);
+                if (!birthdate) errors.push(`Fecha o Edad inválida`);
 
                 return {
                     rowIndex: raw.rowIndex,
@@ -195,6 +249,8 @@ export function useBulkImportAnimals() {
                     id_animal_class,
                     id_breed: 1,
                     birthdate: birthdate ?? new Date().toISOString().split('T')[0],
+                    id_lot,
+                    lot_name: raw.lot_name_raw,
                     weight,
                     errors,
                     hasError: errors.length > 0,
@@ -259,7 +315,7 @@ export function useBulkImportAnimals() {
                             ANIMAL_STATUSES.ACTIVO,
                             PRODUCTIVE_STATUSES.CRIA,
                             row.id_animal_class,
-                            null, // id_lot
+                            row.id_lot,
                             row.code,
                             row.birthdate,
                             row.weight,

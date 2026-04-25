@@ -67,7 +67,7 @@ export default function QrWorkerGenerator() {
 
                 <Text style={styles.ranchName}>{ranch.name}</Text>
                 <Text style={styles.locationText}>
-                    {ranch.city.name} - {ranch.productionType.name}
+                    {ranch.city.name} - {ranch.productionTypes.map(pt => pt.productionType.name).join(', ')}
                 </Text>
 
                 {/* Contenedor del QR */}

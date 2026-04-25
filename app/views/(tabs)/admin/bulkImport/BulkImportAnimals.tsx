@@ -174,6 +174,13 @@ function PreviewRow({ item, onRemove }: { item: ValidatedAnimalRow; onRemove: ()
                 <View style={styles.previewMeta}>
                     <Ionicons name="calendar-outline" size={11} color={Colors.textDisabled} />
                     <Text style={styles.previewMetaTxt}>{item.birthdate}</Text>
+                    {item.lot_name && (
+                        <>
+                            <Text style={styles.previewDot}>·</Text>
+                            <Ionicons name="leaf-outline" size={11} color={Colors.textDisabled} />
+                            <Text style={styles.previewMetaTxt}>{item.lot_name}</Text>
+                        </>
+                    )}
                     {item.weight !== null && (
                         <>
                             <Text style={styles.previewDot}>·</Text>
@@ -305,8 +312,9 @@ function IdleScreen({ onPick }: { onPick: () => void }) {
                     'SEXO  (Macho / Hembra)',
                     'CATEGORÍA  (Vaca, Toro, Ternero, Novillo…)',
                     'RAZA',
-                    'FECHA DE NACIMIENTO  (YYYY-MM-DD)',
-                    'EDAD EN MESES',
+                    'FECHA DE NACIMIENTO  (DD/MM/YYYY)',
+                    'EDAD EN MESES (Opcional)',
+                    'LOTE ACTUAL (Opcional - Nombre)',
                     'PESO ACTUAL (kg)',
                 ].map((c, i) => (
                     <View key={i} style={styles.columnRow}>
@@ -365,7 +373,7 @@ export default function BulkImportAnimals() {
             {showHeader && (
                 <View style={styles.header}>
                     <TouchableOpacity
-                        onPress={() => { reset(); router.back(); }}
+                        onPress={() => { reset(); router.push('/views/(tabs)/admin/bulkImport/bulkImport' as any); }}
                         style={styles.backBtn}
                         disabled={step === 'loading' || step === 'reading'}
                     >

@@ -13,6 +13,7 @@ export interface WeaningFormData {
     weaning_weight?: number | null;
     weaning_age?: number | null;
     lotDestName: string;   // nombre del lote de destino
+    lotDestId?: string | null; // ID del lote de destino
     notes?: string;
 }
 
@@ -21,6 +22,7 @@ const initialForm: WeaningFormData = {
     criaCode: '',
     eventDate: new Date().toISOString().split('T')[0],
     lotDestName: '',
+    lotDestId: null,
 };
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -71,15 +73,20 @@ export function useWeaning() {
                 return false;
             }
 
-            // ── Buscar lote de destino ────────────────────────────────────────────
-            const lot = await findLotByName(formData.lotDestName);
-            if (!lot) {
-                setError(`No se encontró ningún lote activo con el nombre "${formData.lotDestName}".`);
-                return false;
-            }
-            if (lot.lot_type !== 'recria' && lot.lot_type !== 'general') {
-                setError(`El lote "${lot.name}" no es un lote de recría. Verifique el tipo de lote.`);
-                return false;
+            // ── Buscar o validar lote de destino ────────────────────────────────────
+            let lotId = formData.lotDestId;
+            let lot;
+
+            if (!lotId) {
+                lot = await findLotByName(formData.lotDestName);
+                if (!lot) {
+                    setError(`No se encontró ningún lote activo con el nombre "${formData.lotDestName}".`);
+                    return false;
+                }
+                lotId = lot.id;
+            } else {
+                // Si ya tenemos el ID, opcionalmente podemos validar que el tipo sea correcto
+                // pero por ahora confiaremos en el selector visual (que ya filtra por 'recria')
             }
 
             const id_user = await getActiveUserId();
@@ -87,7 +94,7 @@ export function useWeaning() {
             await registerWeaning({
                 id_user,
                 id_cria: cria.id,
-                id_lot_dest: lot.id,
+                id_lot_dest: lotId!,
                 event_date: new Date(formData.eventDate).toISOString(),
                 weaning_weight: formData.weaning_weight ?? undefined,
                 weaning_age: formData.weaning_age ?? undefined,
