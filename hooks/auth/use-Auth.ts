@@ -60,7 +60,6 @@ export async function saveSession(params: SessionParams): Promise<void> {
         params.id_ranch.toString(),
         params.idUser.toString(),
         params.ranch_role,
-        params.idRole ? params.ranch_role : params.idRole, // Mapeo de rol
         params.ranch_name,
         params.fullname,
         JSON.stringify(params.production_types),

@@ -1,154 +1,94 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
-import React from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { showMessage } from 'react-native-flash-message';
-import { HeaderText } from '../../../../components/common/HeaderText';
 import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
-import { Colors, Spacing, Typography } from '../../../../constants/theme';
+import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../constants/theme';
+import { getUserData, SessionParams } from '../../../../hooks/auth/use-Auth';
 
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { useAuth } from '../../../../hooks/auth/use-Auth';
+// ─── Plan ─────────────────────────────────────────────────────────────────────
+
+const PLAN_FREE = {
+  name: 'FREE',
+  color: Colors.textSecondary,
+  bg: Colors.textDisabled + '30',
+  features: ['Hasta 200 animales', 'Módulo Cría', 'Módulo Recría', 'Sincronización básica'],
+};
+
+const PLAN_PREMIUM = {
+  name: 'PREMIUM',
+  color: '#F59E0B',
+  bg: '#F59E0B20',
+  features: [
+    'Animales ilimitados',
+    'Todos los módulos',
+    'Sincronización automática',
+    'Reportes avanzados',
+    'Soporte prioritario',
+  ],
+};
+
+// ─── Pantalla ────────────────────────────────────────────────────────────────
 
 export default function UsuarioScreen() {
-  const { getUserRole, userData, checkAuthStatus } = useAuth();
+  const [userData, setUserData] = useState<SessionParams | null>(null);
   const [roleName, setRoleName] = useState('Usuario');
 
   useFocusEffect(
     useCallback(() => {
-      const loadData = async () => {
-        await checkAuthStatus();
-
-        if (userData?.user?.role?.name) {
-          setRoleName(userData.user.role.name);
-        } else {
-          // Fallback por si no se cargó la data completa
-          const role = await getUserRole();
-          switch (role) {
-            case 1: setRoleName('Super Admin'); break;
-            case 2: setRoleName('Administrador'); break;
-            case 3: setRoleName('Trabajador'); break;
-            default: setRoleName('Usuario');
-          }
+      getUserData().then((data) => {
+        if (!data) return;
+        setUserData(data);
+        switch (data.ranch_role) {
+          case 1: setRoleName('Dueño'); break;
+          case 2: setRoleName('Trabajador'); break;
+          case 3: setRoleName('Administrador'); break;
+          default: setRoleName('Usuario');
         }
-      };
-
-      loadData();
-    }, [userData])
+      });
+    }, [])
   );
 
-  const userStats = [
-    { icon: 'calendar', label: 'Reservas Activas', value: '3' },
-    { icon: 'star', label: 'Puntuación', value: '4.8' },
-    { icon: 'time', label: 'Miembro desde', value: '2024' },
-  ];
+  const plan = PLAN_FREE; // por ahora siempre FREE
 
-  const menuSections = [
-    {
-      title: 'Mi Cuenta',
-      items: [
-        { icon: 'person', label: 'Perfil', color: Colors.primary },
-        { icon: 'notifications', label: 'Notificaciones', color: Colors.secondary },
-        { icon: 'lock-closed', label: 'Privacidad', color: Colors.accent },
-      ],
-    },
-    {
-      title: 'Mis Reservas',
-      items: [
-        { icon: 'calendar', label: 'Historial', color: Colors.primary },
-        { icon: 'heart', label: 'Favoritos', color: Colors.secondary },
-        { icon: 'card', label: 'Métodos de Pago', color: Colors.accent },
-      ],
-    },
-    {
-      title: 'Soporte',
-      items: [
-        { icon: 'help-circle', label: 'Ayuda', color: Colors.textPrimary },
-        { icon: 'chatbubble', label: 'Soporte', color: Colors.secondary },
-        { icon: 'information', label: 'Acerca de', color: Colors.accent },
-      ],
-    },
-  ];
-
-  const handleLogout = async () => {
-    // Mostrar confirmación
+  const handleLogout = () => {
     Alert.alert(
       'Cerrar Sesión',
       '¿Estás seguro que deseas cerrar sesión?',
       [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
+        { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Cerrar Sesión',
           style: 'destructive',
           onPress: async () => {
             try {
-              // Limpiar TODOS los datos de sesión
-              const keysToRemove = [
-                'userToken',
-                'userData',
-                'selectedRoleId',
-                'authToken',
-                'refreshToken',
-                'userProfile',
-                'userPreferences'
-              ];
-
-              // Eliminar cada item individualmente
-              for (const key of keysToRemove) {
-                await AsyncStorage.removeItem(key);
-              }
-
-              // También eliminar cualquier otro dato que pueda existir
-              // usando getAllKeys para asegurarnos
-              const allKeys = await AsyncStorage.getAllKeys();
-              const authRelatedKeys = allKeys.filter(key =>
-                key.includes('token') ||
-                key.includes('auth') ||
-                key.includes('user') ||
-                key.includes('session')
-              );
-
-              for (const key of authRelatedKeys) {
-                await AsyncStorage.removeItem(key);
-              }
-
-              console.log('Sesión cerrada. Datos eliminados.');
-
-              // Mostrar mensaje de éxito
+              await AsyncStorage.multiRemove([
+                'access_token',
+                'user_id',
+                'user_role',
+                'user_data',
+              ]);
               showMessage({
                 message: 'Sesión cerrada',
-                description: 'Has cerrado sesión exitosamente.',
+                description: 'Hasta pronto.',
                 type: 'success',
-                duration: 3000,
                 floating: true,
               });
-
-              // Redirigir al login después de un breve delay
-              setTimeout(() => {
-                // Usar replace para no poder volver atrás
-                router.replace('/views/auth/Inicio');
-              }, 500);
-
-            } catch (error) {
-              console.error('Error al cerrar sesión:', error);
-
-              // Mostrar mensaje de error
+              setTimeout(() => router.replace('/views/auth/Login'), 500);
+            } catch {
               showMessage({
                 message: 'Error',
-                description: 'No se pudo cerrar sesión. Intenta nuevamente.',
+                description: 'No se pudo cerrar sesión.',
                 type: 'danger',
-                duration: 3000,
                 floating: true,
               });
             }
@@ -159,241 +99,307 @@ export default function UsuarioScreen() {
     );
   };
 
+  const initials = userData?.fullname
+    ? userData.fullname.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+    : '?';
+
   return (
-    <ScreenContainer scrollable={true}>
-      {/* Header del Usuario */}
-      <View style={styles.userHeader}>
-        <View style={styles.avatarContainer}>
+    <ScreenContainer scrollable={false} style={styles.container}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Avatar + nombre */}
+        <View style={styles.profileHeader}>
           <View style={styles.avatar}>
-            <Ionicons name="person" size={40} color={Colors.textLight} />
+            <Text style={styles.avatarText}>{initials}</Text>
           </View>
-          <View style={styles.verifiedBadge}>
-            <Ionicons name="checkmark" size={16} color={Colors.textLight} />
+          <Text style={styles.userName}>{userData?.fullname || 'Usuario'}</Text>
+          <Text style={styles.userEmail}>{userData?.email || ''}</Text>
+          <View style={[styles.roleBadge, { backgroundColor: Colors.primary + '20' }]}>
+            <Text style={[styles.roleBadgeText, { color: Colors.primary }]}>{roleName}</Text>
           </View>
         </View>
-        <HeaderText variant="h1" style={styles.userName}>
-          {userData?.user?.fullname || userData?.name || 'Usuario'}
-        </HeaderText>
-        <Text style={styles.userEmail}>
-          {userData?.user?.email || userData?.email || 'usuario@email.com'}
-        </Text>
-        <View style={styles.userBadge}>
-          <Text style={styles.userBadgeText}>{roleName}</Text>
-        </View>
-      </View>
 
-      {/* Estadísticas del Usuario */}
-      <View style={styles.statsSection}>
-        <View style={styles.statsGrid}>
-          {userStats.map((stat, index) => (
-            <View key={index} style={styles.statItem}>
-              <View style={styles.statIcon}>
-                <Ionicons name={stat.icon as any} size={20} color={Colors.primary} />
-              </View>
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statLabel}>{stat.label}</Text>
+        {/* Estancia */}
+        {userData?.ranch_name && (
+          <View style={styles.ranchCard}>
+            <Ionicons name="leaf" size={20} color={Colors.primary} />
+            <View style={styles.ranchInfo}>
+              <Text style={styles.ranchLabel}>Estancia activa</Text>
+              <Text style={styles.ranchName}>{userData.ranch_name}</Text>
             </View>
-          ))}
-        </View>
-      </View>
+          </View>
+        )}
 
-      {/* Menú de Opciones */}
-      <View style={styles.menuContainer}>
-        {menuSections.map((section, sectionIndex) => (
-          <View key={sectionIndex} style={styles.menuSection}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <View style={styles.menuItems}>
-              {section.items.map((item, itemIndex) => (
-                <TouchableOpacity key={itemIndex} style={styles.menuItem}>
-                  <View style={[styles.menuIcon, { backgroundColor: item.color }]}>
-                    <Ionicons name={item.icon as any} size={20} color={Colors.textLight} />
-                  </View>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
-                  <Ionicons name="chevron-forward" size={20} color={Colors.textDisabled} />
-                </TouchableOpacity>
+        {/* Plan */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Plan de suscripción</Text>
+          <View style={styles.planCard}>
+            <View style={styles.planHeader}>
+              <View style={[styles.planBadge, { backgroundColor: plan.bg }]}>
+                <Text style={[styles.planBadgeText, { color: plan.color }]}>{plan.name}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.upgradeBtn}
+                onPress={() =>
+                  showMessage({
+                    message: 'Próximamente',
+                    description: 'La suscripción Premium estará disponible pronto.',
+                    type: 'info',
+                    floating: true,
+                  })
+                }
+              >
+                <Ionicons name="star" size={14} color={Colors.white} />
+                <Text style={styles.upgradeBtnText}>Mejorar a Premium</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.featureList}>
+              {plan.features.map((f, i) => (
+                <View key={i} style={styles.featureRow}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
+                  <Text style={styles.featureText}>{f}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.premiumTeaser}>
+              <Text style={styles.premiumTeaserText}>Con Premium también obtienes:</Text>
+              {PLAN_PREMIUM.features.slice(3).map((f, i) => (
+                <View key={i} style={styles.featureRow}>
+                  <Ionicons name="lock-closed" size={14} color={Colors.textDisabled} />
+                  <Text style={[styles.featureText, { color: Colors.textDisabled }]}>{f}</Text>
+                </View>
               ))}
             </View>
           </View>
-        ))}
+        </View>
 
-        {/* Cerrar Sesión - Ahora con funcionalidad */}
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-          activeOpacity={0.7}
-        >
-          <View style={styles.logoutIconContainer}>
-            <Ionicons name="log-out" size={24} color={Colors.error} />
+        {/* Opciones */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Cuenta</Text>
+          <View style={styles.menuCard}>
+            {[
+              { icon: 'help-circle-outline', label: 'Ayuda y soporte', onPress: () => {} },
+              { icon: 'information-circle-outline', label: 'Acerca de Estancia360', onPress: () => {} },
+            ].map((item, i) => (
+              <TouchableOpacity key={i} style={styles.menuRow} onPress={item.onPress} activeOpacity={0.7}>
+                <Ionicons name={item.icon as any} size={22} color={Colors.textSecondary} />
+                <Text style={styles.menuLabel}>{item.label}</Text>
+                <Ionicons name="chevron-forward" size={18} color={Colors.textDisabled} />
+              </TouchableOpacity>
+            ))}
           </View>
+        </View>
+
+        {/* Logout */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
+          <Ionicons name="log-out-outline" size={22} color={Colors.error} />
           <Text style={styles.logoutText}>Cerrar Sesión</Text>
         </TouchableOpacity>
-      </View>
+
+        <Text style={styles.version}>Estancia360 v1.0 MVP</Text>
+
+        <View style={{ height: Spacing.tabBarHeight + 20 }} />
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  userHeader: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-    paddingVertical: Spacing.lg,
+  container: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
+    flex: 1,
+    backgroundColor: Colors.background,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: Spacing.md,
+  profileHeader: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
   },
   avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: Colors.primary,
-    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+    ...Shadows.floatingButton,
   },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: Colors.background,
+  avatarText: {
+    fontFamily: Typography.fontPrimary,
+    fontSize: 32,
+    fontWeight: '700',
+    color: Colors.white,
   },
   userName: {
-    marginBottom: Spacing.xs,
-    textAlign: 'center',
+    fontFamily: Typography.fontPrimary,
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    textTransform: 'capitalize',
+    marginBottom: 4,
   },
   userEmail: {
-    ...Typography.body,
+    fontFamily: Typography.fontSecondary,
+    fontSize: 13,
     color: Colors.textSecondary,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
   },
-  userBadge: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.xs,
-    borderRadius: 20,
+  roleBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
   },
-  userBadgeText: {
-    ...Typography.overline,
-    color: Colors.textLight,
-    fontWeight: '600',
+  roleBadgeText: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  statsSection: {
+  ranchCard: {
     backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: Spacing.lg,
-    marginBottom: Spacing.xl,
-    shadowColor: Colors.textPrimary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  statsGrid: {
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
     alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.lg,
+    ...Shadows.tabBar,
   },
-  statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  statValue: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-    marginBottom: 2,
-  },
-  statLabel: {
-    ...Typography.bodySmall,
+  ranchInfo: { flex: 1 },
+  ranchLabel: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 11,
     color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  menuContainer: {
-    gap: Spacing.lg,
+  ranchName: {
+    fontFamily: Typography.fontPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
   },
-  menuSection: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: Colors.textPrimary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+  section: {
+    marginBottom: Spacing.xl,
   },
   sectionTitle: {
-    ...Typography.h3,
+    fontFamily: Typography.fontPrimary,
+    fontSize: 16,
+    fontWeight: '700',
     color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  planCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
-    paddingBottom: Spacing.md,
-    backgroundColor: Colors.white,
+    ...Shadows.tabBar,
   },
-  menuItems: {
-    backgroundColor: Colors.white,
-  },
-  menuItem: {
+  planHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.textDisabled + '20',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.md,
   },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
+  planBadge: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.sm,
+  },
+  planBadgeText: {
+    fontFamily: Typography.fontPrimary,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  upgradeBtn: {
+    backgroundColor: '#F59E0B',
+    borderRadius: BorderRadius.md,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    gap: 4,
+  },
+  upgradeBtnText: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  featureList: {
+    gap: 6,
+    marginBottom: Spacing.md,
+  },
+  featureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  featureText: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 13,
+    color: Colors.textPrimary,
+  },
+  premiumTeaser: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.textDisabled + '30',
+    paddingTop: Spacing.md,
+    gap: 6,
+  },
+  premiumTeaserText: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  menuCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...Shadows.tabBar,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: Spacing.md,
+    gap: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.textDisabled + '20',
   },
   menuLabel: {
-    ...Typography.body,
+    fontFamily: Typography.fontSecondary,
+    fontSize: 14,
     color: Colors.textPrimary,
     flex: 1,
   },
-  logoutButton: {
+  logoutBtn: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.white,
-    padding: Spacing.lg,
-    borderRadius: 20,
-    shadowColor: Colors.textPrimary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: Spacing.md,
+    padding: Spacing.md,
+    gap: Spacing.sm,
     borderWidth: 1,
-    borderColor: Colors.error + '30',
-  },
-  logoutIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.error + '10',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: Colors.error + '40',
+    marginBottom: Spacing.lg,
+    ...Shadows.tabBar,
   },
   logoutText: {
-    ...Typography.body,
+    fontFamily: Typography.fontSecondary,
+    fontSize: 15,
+    fontWeight: '700',
     color: Colors.error,
-    fontWeight: '600',
+  },
+  version: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 12,
+    color: Colors.textDisabled,
+    textAlign: 'center',
+    marginBottom: Spacing.md,
   },
 });

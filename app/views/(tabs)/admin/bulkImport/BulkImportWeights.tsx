@@ -310,7 +310,7 @@ export default function BulkImportWeights() {
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
             {step !== 'done' && (
                 <View style={s.header}>
-                    <TouchableOpacity onPress={() => { reset(); router.push('/views/(tabs)/admin/bulkImport/bulkImport' as any); }} style={s.backBtn} disabled={blocked}>
+                    <TouchableOpacity onPress={() => { reset(); router.replace('/views/(tabs)/admin/bulkImport/bulkImport' as any); }} style={s.backBtn} disabled={blocked}>
                         <Ionicons name="arrow-back" size={28} color={blocked ? Colors.textDisabled : Colors.primary} />
                     </TouchableOpacity>
                     <View style={s.titleWrap}>

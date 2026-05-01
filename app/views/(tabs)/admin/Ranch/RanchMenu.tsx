@@ -8,8 +8,7 @@ export default function RanchMenu() {
     const router = useRouter();
 
     const handleBack = () => {
-        // Navigate back to Management screen
-        router.push('/views/admin/management/Management');
+        router.replace('/views/(tabs)/admin/management/Management');
     };
 
     const handleNavigation = (route: string) => {

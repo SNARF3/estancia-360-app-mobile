@@ -23,28 +23,28 @@ export default function AdministracionScreen() {
 
   const menuItems = [
     {
-      icon: 'leaf',
-      label: 'Mi estancia',
-      route: '/views/(tabs)/admin/Ranch/breeding/BreedingMenu',
+      icon: 'paw',
+      label: 'Mis Animales',
+      route: '/views/(tabs)/admin/Ranch/Animals/AnimalMenu',
       color: Colors.primary,
+    },
+    {
+      icon: 'cloud-upload',
+      label: 'Cargas Masivas',
+      route: '/views/(tabs)/admin/bulkImport/bulkImport',
+      color: '#3B82F6',
     },
     {
       icon: 'grid-outline',
       label: 'Potreros',
       route: '/views/(tabs)/admin/Ranch/Pastures/PasturesMenu',
-      color: Colors.primary,
-    },
-    {
-      icon: 'stats-chart',
-      label: 'Reportes',
-      route: '/views/(tabs)/admin/management/QrWorkerGenerator',
-      color: Colors.primary,
+      color: Colors.accent,
     },
     {
       icon: 'people',
       label: 'Mi equipo',
       route: '/views/(tabs)/admin/management/QrWorkerGenerator',
-      color: Colors.primary,
+      color: Colors.textSecondary,
     },
   ];
 

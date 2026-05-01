@@ -52,11 +52,14 @@ const ANIMAL_ACTIONS: {
     route: string;
     paramKey: string;
 }[] = [
+        { label: 'Registrar Pesaje', icon: 'scale', route: '/views/(tabs)/admin/Ranch/rearing/WeightRecordForm', paramKey: 'animalCode' },
+        { label: 'Vacunación', icon: 'shield-checkmark', route: '/views/(tabs)/admin/Ranch/health/VaccinationForm', paramKey: 'animalCode' },
+        { label: 'Tratamiento', icon: 'bandage', route: '/views/(tabs)/admin/Ranch/health/TreatmentForm', paramKey: 'animalCode' },
+        { label: 'Incidente Sanitario', icon: 'warning', route: '/views/(tabs)/admin/Ranch/health/HealthIncidentForm', paramKey: 'animalCode' },
         { label: 'Registrar Servicio', icon: 'heart', route: '/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm', paramKey: 'animalCode' },
         { label: 'Diagnóstico Gestación', icon: 'analytics', route: '/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm', paramKey: 'animalCode' },
         { label: 'Registrar Parto', icon: 'fitness', route: '/views/(tabs)/admin/Ranch/breeding/ParturitionForm', paramKey: 'animalCode' },
         { label: 'Registrar Destete', icon: 'git-branch', route: '/views/(tabs)/admin/Ranch/breeding/WeaningForm', paramKey: 'criaCode' },
-
     ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -366,7 +369,7 @@ export default function AnimalMenuScreen() {
             {/* Header */}
             <View style={styles.header}>
                 <View style={styles.headerRow}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                    <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management')} style={styles.backBtn}>
                         <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                     </TouchableOpacity>
                     <View style={styles.titleRow}>

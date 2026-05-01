@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/theme';
@@ -8,7 +9,7 @@ interface TabItem {
   name: string;
   label: string;
   icon: string;
-  route: any;
+  route: string;
   isCentral?: boolean;
 }
 
@@ -18,32 +19,38 @@ interface TabBarProps {
   descriptors: any;
 }
 
-import { usePathname, useRouter } from 'expo-router';
-
-export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descriptors }) => {
+export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
   const router = useRouter();
   const pathname = usePathname();
   const { getUserRole } = useAuth();
   const [role, setRole] = React.useState<number | null>(null);
 
   React.useEffect(() => {
-    const fetchRole = async () => {
-      const userRole = await getUserRole();
-      setRole(userRole);
-    };
-    fetchRole();
+    getUserRole().then(setRole);
   }, []);
 
   const adminTabs: TabItem[] = [
     {
-      name: 'admin',
-      label: 'Administración',
-      icon: 'business',
+      name: 'management',
+      label: 'Mi Estancia',
+      icon: 'leaf',
       route: '/views/(tabs)/admin/management/Management',
     },
     {
-      name: 'users',
-      label: 'Usuario',
+      name: 'sync',
+      label: 'Sincronización',
+      icon: 'sync',
+      route: '/views/(tabs)/admin/sync/SyncScreen',
+    },
+    {
+      name: 'weights',
+      label: 'Pesos',
+      icon: 'stats-chart',
+      route: '/views/(tabs)/admin/weights/WeightsScreen',
+    },
+    {
+      name: 'usuario',
+      label: 'Perfil',
       icon: 'person',
       route: '/views/(tabs)/users/usuario',
     },
@@ -64,8 +71,8 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descrip
       isCentral: true,
     },
     {
-      name: 'users',
-      label: 'Usuario',
+      name: 'usuario',
+      label: 'Perfil',
       icon: 'person',
       route: '/views/(tabs)/users/usuario',
     },
@@ -73,10 +80,14 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descrip
 
   const tabs = role === 3 ? workerTabs : adminTabs;
 
-  // Check if tab bar should be hidden for current modules (Animals, Breeding, or explicit display:none)
   const { options } = descriptors[state.routes[state.index].key];
-  const isHiddenModule = pathname.includes('/admin/Ranch/Animals') || 
-                         pathname.includes('/admin/Ranch/breeding');
+  const isHiddenModule =
+    pathname.includes('/admin/Ranch/Animals') ||
+    pathname.includes('/admin/Ranch/breeding') ||
+    pathname.includes('/admin/Ranch/rearing') ||
+    pathname.includes('/admin/Ranch/fattening') ||
+    pathname.includes('/admin/Ranch/health') ||
+    pathname.includes('/admin/Ranch/Pastures');
 
   if (options.tabBarStyle?.display === 'none' || isHiddenModule) {
     return null;
@@ -87,13 +98,10 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descrip
       <View style={styles.background} />
 
       {tabs.map((tab) => {
-        // Focus logic based on pathname substrings (more robust for Expo Router)
         const isFocused = pathname.includes(tab.name);
 
         const onPress = () => {
-          if (!isFocused) {
-            router.push(tab.route);
-          }
+          if (!isFocused) router.push(tab.route as any);
         };
 
         if (tab.isCentral) {
@@ -105,11 +113,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descrip
                 activeOpacity={0.8}
               >
                 <View style={styles.centralTabBackground}>
-                  <Ionicons
-                    name={tab.icon === 'scan' ? 'qr-code' : 'add'}
-                    size={Typography.floatingIcon.fontSize}
-                    color={Colors.white}
-                  />
+                  <Ionicons name="qr-code" size={Typography.floatingIcon.fontSize} color={Colors.white} />
                 </View>
               </TouchableOpacity>
             </View>
@@ -123,24 +127,14 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, navigation, descrip
             onPress={onPress}
             activeOpacity={0.7}
           >
-            <View style={[
-              styles.tabIconContainer,
-              isFocused && styles.tabIconContainerActive
-            ]}>
+            <View style={[styles.tabIconContainer, isFocused && styles.tabIconContainerActive]}>
               <Ionicons
                 name={tab.icon as any}
                 size={Typography.tabIcon.fontSize}
                 color={isFocused ? Colors.tabActive : Colors.tabInactive}
               />
             </View>
-            <Text
-              style={[
-                styles.tabLabel,
-                {
-                  color: isFocused ? Colors.tabActive : Colors.tabInactive,
-                },
-              ]}
-            >
+            <Text style={[styles.tabLabel, { color: isFocused ? Colors.tabActive : Colors.tabInactive }]}>
               {tab.label}
             </Text>
           </TouchableOpacity>

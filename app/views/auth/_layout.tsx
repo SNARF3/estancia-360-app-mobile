@@ -13,8 +13,9 @@ export default function AuthLayout() {
     >
       <Stack.Screen name="Inicio" />
       <Stack.Screen name="Login" />
-      <Stack.Screen name="RegisterRole" /> 
+      <Stack.Screen name="RegisterRole" />
       <Stack.Screen name="Register" />
+      <Stack.Screen name="RegisterRanch" />
       <Stack.Screen name="VerificationCodeEmail" />
       <Stack.Screen name="ChangePassword" />
     </Stack>

@@ -9,73 +9,47 @@ export default function TabLayout() {
         headerShown: false,
       }}
     >
-      {/* Route: /views/(tabs)/index (hidden) */}
+      {/* === TABS VISIBLES EN EL TAB BAR === */}
       <Tabs.Screen
-        name="index"
-        options={{
-          href: null,
-        }}
+        name="admin/management"
+        options={{ title: 'Management' }}
       />
-
-      {/* Route: /views/(tabs)/admin/management/Management */}
       <Tabs.Screen
-        name="admin/management/Management"
-        options={{
-          title: 'Management',
-        }}
+        name="admin/sync/SyncScreen"
+        options={{ title: 'Sincronización' }}
       />
-
-      {/* Route: /views/(tabs)/worker/WorkerManagement */}
       <Tabs.Screen
-        name="worker/WorkerManagement"
-        options={{
-          title: 'Inicio',
-        }}
+        name="admin/weights/WeightsScreen"
+        options={{ title: 'Pesos' }}
       />
-
-      {/* Route: /views/(tabs)/worker/QrScannerRanch */}
-      <Tabs.Screen
-        name="worker/QrScannerRanch"
-        options={{
-          title: 'Scanner',
-        }}
-      />
-
-      {/* Route: /views/(tabs)/users/usuario */}
       <Tabs.Screen
         name="users/usuario"
-        options={{
-          title: 'Usuario',
-        }}
+        options={{ title: 'Usuario' }}
       />
 
-      {/* Sub-screens implicit in file structure but can be defined here to hide from tab bar logic if needed, 
-          though href:null in tabs usually handles it. BottomTabBar custom logic handles the visible tabs. */}
+      {/* === RUTAS NO VISIBLES EN EL TAB BAR === */}
+      {/* worker tiene su propio _layout, se registra como segmento completo */}
       <Tabs.Screen
-        name="admin/management/QrWorkerGenerator"
-        options={{
-          href: null,
-        }}
+        name="worker"
+        options={{ href: null }}
+      />
+      {/* admin/Ranch tiene su propio _layout */}
+      <Tabs.Screen
+        name="admin/Ranch"
+        options={{ href: null }}
+      />
+      {/* bulkImport no tiene _layout, sus archivos se descubren individualmente */}
+      <Tabs.Screen
+        name="admin/bulkImport/BulkImportAnimals"
+        options={{ href: null }}
       />
       <Tabs.Screen
-        name="admin/Ranch/RanchMenu"
-        options={{
-          href: null,
-        }}
+        name="admin/bulkImport/BulkImportWeights"
+        options={{ href: null }}
       />
       <Tabs.Screen
-        name="admin/Ranch/Animals"
-        options={{
-          href: null,
-          tabBarStyle: { display: 'none' }
-        }}
-      />
-      <Tabs.Screen
-        name="admin/Ranch/breeding"
-        options={{
-          href: null,
-          tabBarStyle: { display: 'none' }
-        }}
+        name="admin/bulkImport/bulkImport"
+        options={{ href: null }}
       />
     </Tabs>
   );

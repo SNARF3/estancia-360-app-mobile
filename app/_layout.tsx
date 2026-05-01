@@ -24,10 +24,10 @@ export default function RootLayout() {
             router.replace('/views/(tabs)/admin/management/Management');
           }
         } else {
-          router.replace('/views/auth/Login');
+          router.replace('/views/auth/Inicio');
         }
       } catch {
-        router.replace('/views/auth/Login');
+        router.replace('/views/auth/Inicio');
       } finally {
         setChecking(false);
       }

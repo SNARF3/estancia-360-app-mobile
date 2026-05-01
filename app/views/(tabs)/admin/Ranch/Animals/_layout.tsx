@@ -5,6 +5,7 @@ export default function AnimalsLayout() {
         <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="AnimalMenu" />
             <Stack.Screen name="AddAnimal" />
+            <Stack.Screen name="DetailAnimal" />
         </Stack>
     );
 }

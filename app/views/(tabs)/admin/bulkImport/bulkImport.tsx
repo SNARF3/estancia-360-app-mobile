@@ -44,7 +44,7 @@ export default function BulkImportMenu() {
         <View style={s.root}>
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
             <View style={s.header}>
-                <TouchableOpacity onPress={() => router.push('/views/(tabs)/admin/Ranch/breeding/BreedingMenu' as any)} style={s.backBtn}>
+                <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management' as any)} style={s.backBtn}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={s.titleWrap}>

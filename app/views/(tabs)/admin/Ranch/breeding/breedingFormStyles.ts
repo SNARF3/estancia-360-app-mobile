@@ -265,4 +265,32 @@ export const breedingFormStyles = StyleSheet.create({
         color: Colors.textSecondary,
         fontFamily: Typography.fontSecondary,
     },
+    // Chip row (alias para módulos de Sanidad)
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: Spacing.sm,
+    },
+    chip: {
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        borderRadius: BorderRadius.xxl,
+        backgroundColor: Colors.background,
+        borderWidth: 1.5,
+        borderColor: Colors.border,
+    },
+    chipSelected: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    chipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+        fontFamily: Typography.fontPrimary,
+    },
+    chipTextSelected: {
+        color: Colors.white,
+    },
 });

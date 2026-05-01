@@ -313,7 +313,7 @@ export default function PasturesScreen() {
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
             <View style={ps.header}>
-                <TouchableOpacity onPress={() => router.push('/views/(tabs)/admin/management/Management' as any)} style={ps.backBtn}>
+                <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management' as any)} style={ps.backBtn}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={ps.titleWrap}>

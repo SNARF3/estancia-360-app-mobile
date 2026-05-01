@@ -373,7 +373,7 @@ export default function BulkImportAnimals() {
             {showHeader && (
                 <View style={styles.header}>
                     <TouchableOpacity
-                        onPress={() => { reset(); router.push('/views/(tabs)/admin/bulkImport/bulkImport' as any); }}
+                        onPress={() => { reset(); router.replace('/views/(tabs)/admin/bulkImport/bulkImport' as any); }}
                         style={styles.backBtn}
                         disabled={step === 'loading' || step === 'reading'}
                     >
