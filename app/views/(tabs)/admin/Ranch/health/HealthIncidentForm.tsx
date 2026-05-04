@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -12,6 +12,8 @@ import {
   View,
 } from 'react-native';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
+import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useHealthIncident } from '../../../../../../hooks/health/use-HealthIncident';
 import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
@@ -22,7 +24,9 @@ const INCIDENT_TYPES = [
 ];
 
 export default function HealthIncidentForm() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [isPickerVisible, setIsPickerVisible] = useState(false);
   const { animalCode: paramCode } = useLocalSearchParams<{ animalCode: string }>();
   const { formData, updateField, saveRecord, resetForm, loading, error } = useHealthIncident();
 
@@ -49,7 +53,7 @@ export default function HealthIncidentForm() {
 
   return (
     <KeyboardAvoidingView style={styles.mainContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
@@ -67,13 +71,16 @@ export default function HealthIncidentForm() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Animal</Text>
           <Text style={styles.label}>CÓDIGO DEL ANIMAL *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ej: AN-001"
-            value={formData.animalCode}
-            onChangeText={(v) => updateField('animalCode', v.toUpperCase())}
-            autoCapitalize="characters"
-          />
+          <TouchableOpacity
+            style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+            onPress={() => setIsPickerVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 16, color: formData.animalCode ? Colors.textPrimary : Colors.textDisabled }}>
+              {formData.animalCode || 'Buscar animal...'}
+            </Text>
+            <Ionicons name="search" size={18} color={Colors.textDisabled} />
+          </TouchableOpacity>
         </View>
 
         {/* Incidente */}
@@ -151,6 +158,12 @@ export default function HealthIncidentForm() {
           )}
         </TouchableOpacity>
       </ScrollView>
-    </KeyboardAvoidingView>
+    
+      <AnimalPickerModal
+          visible={isPickerVisible}
+          onClose={() => setIsPickerVisible(false)}
+          onSelect={(code) => updateField('animalCode', code)}
+      />
+</KeyboardAvoidingView>
   );
 }

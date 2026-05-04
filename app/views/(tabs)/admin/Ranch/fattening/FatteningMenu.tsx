@@ -2,13 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import { getSession } from '../../../../../../hooks/auth/use-Auth';
 import { getDb } from '../../../../../../hooks/db.sqlite/db-pool';
@@ -21,6 +21,7 @@ interface FatteningStats {
 
 export default function FatteningMenu() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [stats, setStats] = useState<FatteningStats>({ total: 0, avgWeight: null, feedRecordsLast7: 0 });
 
   useFocusEffect(
@@ -82,7 +83,7 @@ export default function FatteningMenu() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.replace('/views/(tabs)/admin/management/Management' as any)}>
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
@@ -150,7 +151,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: Platform.OS === 'ios' ? 60 : 20,
     paddingBottom: 16,
     paddingHorizontal: Spacing.lg,
     backgroundColor: Colors.background,

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { LotSelectorModal } from '../../../../../../components/common/LotSelectorModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useFeedRecord } from '../../../../../../hooks/fattening/use-FeedRecord';
 import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
@@ -21,6 +22,7 @@ const UNITS = ['kg', 'tn', 'lt', 'bolsas'];
 const FEED_SUGGESTIONS = ['Maíz', 'Sorgo', 'Silo maíz', 'Pastura', 'Pellet proteico', 'Heno', 'Otro'];
 
 export default function FeedRecordForm() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { formData, updateField, saveRecord, resetForm, loading, error } = useFeedRecord();
   const [showLotSelector, setShowLotSelector] = React.useState(false);
@@ -41,7 +43,7 @@ export default function FeedRecordForm() {
 
   return (
     <KeyboardAvoidingView style={styles.mainContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>

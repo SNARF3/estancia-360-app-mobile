@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 
 export default function RanchMenu() {
@@ -110,7 +111,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.background,
         paddingHorizontal: Spacing.lg,
         paddingVertical: 15,
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight! + 10 : 15,
+        paddingTop: 15,
     },
     headerLeft: {
         flexDirection: 'row',

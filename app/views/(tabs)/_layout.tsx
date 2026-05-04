@@ -27,6 +27,11 @@ export default function TabLayout() {
         options={{ title: 'Usuario' }}
       />
 
+      <Tabs.Screen
+        name="admin/Registros/RegistrosMenu"
+        options={{ href: null }}
+      />
+
       {/* === RUTAS NO VISIBLES EN EL TAB BAR === */}
       {/* worker tiene su propio _layout, se registra como segmento completo */}
       <Tabs.Screen

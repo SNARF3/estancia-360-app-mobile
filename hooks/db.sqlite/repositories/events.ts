@@ -295,7 +295,7 @@ export async function registerWeaning(input: CreateWeaningInput) {
 export interface CreateWeightRecordInput {
     id_user: string;
     id_ranch_animal: string;
-    id_lot: string;
+    id_lot?: string | null;
     event_date: string;
     weight: number;
     weight_type: 'scale' | 'estimated';
@@ -325,7 +325,7 @@ export async function registerWeightRecord(input: CreateWeightRecordInput) {
             `INSERT INTO weight_records
          (id, id_event, id_lot, weight, weight_type, body_condition, age_days, created_at, updated_at, is_synced, sync_action)
        VALUES (?,?,?,?,?,?,?,?,?,0,'INSERT')`,
-            [id, event.id, input.id_lot, input.weight, input.weight_type,
+            [id, event.id, input.id_lot ?? null, input.weight, input.weight_type,
                 input.body_condition ?? null, input.age_days ?? null, ts, ts]
         );
 
@@ -703,6 +703,7 @@ export async function registerVaccination(input: CreateVaccinationInput) {
 
     return { event_id, vaccination_id };
 }
+
 
 // ─── Historial de eventos de un animal ───────────────────────────────────────
 

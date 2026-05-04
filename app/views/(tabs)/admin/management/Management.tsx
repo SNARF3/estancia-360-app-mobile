@@ -29,22 +29,16 @@ export default function AdministracionScreen() {
       color: Colors.primary,
     },
     {
-      icon: 'cloud-upload',
-      label: 'Cargas Masivas',
-      route: '/views/(tabs)/admin/bulkImport/bulkImport',
-      color: '#3B82F6',
+      icon: 'document-text-outline',
+      label: 'Registros',
+      route: '/views/(tabs)/admin/Ranch/Registros/RegistrosMenu',
+      color: Colors.primary,
     },
     {
       icon: 'grid-outline',
       label: 'Potreros',
       route: '/views/(tabs)/admin/Ranch/Pastures/PasturesMenu',
-      color: Colors.accent,
-    },
-    {
-      icon: 'people',
-      label: 'Mi equipo',
-      route: '/views/(tabs)/admin/management/QrWorkerGenerator',
-      color: Colors.textSecondary,
+      color: Colors.primary,
     },
   ];
 
@@ -85,7 +79,7 @@ export default function AdministracionScreen() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
+    paddingTop: 46,
     flex: 1,
     backgroundColor: Colors.background,
   },

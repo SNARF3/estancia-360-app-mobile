@@ -37,8 +37,14 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
       route: '/views/(tabs)/admin/management/Management',
     },
     {
+      name: 'Registros',
+      label: 'Registros',
+      icon: 'create-outline',
+      route: '/views/(tabs)/admin/Registros/RegistrosMenu',
+    },
+    {
       name: 'sync',
-      label: 'Sincronización',
+      label: 'Sync',
       icon: 'sync',
       route: '/views/(tabs)/admin/sync/SyncScreen',
     },

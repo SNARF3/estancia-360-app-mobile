@@ -11,6 +11,7 @@ import {
     ScrollView, StatusBar, StyleSheet, Text,
     TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import {
     LOT_TYPE_COLORS, LOT_TYPE_LABELS, useLots, usePastures,
@@ -197,17 +198,35 @@ function LotFormModal({
 // ─── Tarjeta de potrero ───────────────────────────────────────────────────────
 
 function PastureCard({
-    pasture, onAddLot, onEdit, onDeactivate,
+    pasture, onAddLot, onEdit, onDeactivate, onDelete, onLotPress,
 }: {
     pasture: Pasture;
     onAddLot: () => void;
     onEdit: () => void;
     onDeactivate: () => void;
+    onDelete: () => void;
+    onLotPress: (lotId: string, lotName: string, lotType: string) => void;
 }) {
     const [expanded, setExpanded] = useState(true);
-    const { lots, loading: lLots, fetchLots } = useLots(pasture.id);
+    const { lots, loading: lLots, fetchLots, deleteLot } = useLots(pasture.id);
 
     useFocusEffect(useCallback(() => { fetchLots(pasture.id); }, [pasture.id]));
+
+    const handleDeleteLot = (lotId: string, lotName: string) => {
+        Alert.alert(
+            'Eliminar lote',
+            `¿Eliminar el lote "${lotName}"? Esta acción no se puede deshacer.`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar', style: 'destructive', onPress: async () => {
+                        const ok = await deleteLot(lotId);
+                        if (!ok) Alert.alert('No se pudo eliminar', 'El lote tiene animales activos.');
+                    }
+                },
+            ]
+        );
+    };
 
     return (
         <View style={ps.card}>
@@ -233,6 +252,13 @@ function PastureCard({
                     )}>
                         <Ionicons name="power-outline" size={18} color={Colors.error} />
                     </TouchableOpacity>
+                    <TouchableOpacity style={ps.actionBtn} onPress={() => Alert.alert(
+                        'Eliminar potrero',
+                        `¿Eliminar el potrero "${pasture.name}" y todos sus lotes? Esta acción no se puede deshacer.`,
+                        [{ text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: onDelete }]
+                    )}>
+                        <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                    </TouchableOpacity>
                     <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.textSecondary} />
                 </View>
             </TouchableOpacity>
@@ -244,23 +270,34 @@ function PastureCard({
                         const c = LOT_TYPE_COLORS[lot.lot_type];
                         return (
                             <View key={lot.id} style={[ps.lotRow, { borderLeftColor: c }]}>
-                                <View style={[ps.lotTypeBadge, { backgroundColor: c + '20' }]}>
-                                    <Text style={[ps.lotTypeTxt, { color: c }]}>
-                                        {LOT_TYPE_LABELS[lot.lot_type]}
-                                    </Text>
-                                </View>
-                                <View style={ps.lotInfo}>
-                                    <Text style={ps.lotName}>{lot.name}</Text>
-                                    <Text style={ps.lotMeta}>
-                                        {lot.animals_count} animal{lot.animals_count !== 1 ? 'es' : ''}
-                                        {lot.capacity ? ` / cap. ${lot.capacity}` : ''}
-                                    </Text>
-                                </View>
-                                {lot.capacity && lot.animals_count >= lot.capacity && (
-                                    <View style={ps.fullBadge}>
-                                        <Text style={ps.fullBadgeTxt}>LLENO</Text>
+                                <TouchableOpacity
+                                    style={ps.lotRowContent}
+                                    onPress={() => onLotPress(lot.id, lot.name, lot.lot_type)}
+                                    activeOpacity={0.75}
+                                >
+                                    <View style={[ps.lotTypeBadge, { backgroundColor: c + '20' }]}>
+                                        <Text style={[ps.lotTypeTxt, { color: c }]}>
+                                            {LOT_TYPE_LABELS[lot.lot_type]}
+                                        </Text>
                                     </View>
-                                )}
+                                    <View style={ps.lotInfo}>
+                                        <Text style={ps.lotName}>{lot.name}</Text>
+                                        <Text style={ps.lotMeta}>
+                                            {lot.animals_count} animal{lot.animals_count !== 1 ? 'es' : ''}
+                                            {lot.capacity ? ` / cap. ${lot.capacity}` : ''}
+                                        </Text>
+                                    </View>
+                                    {lot.capacity && lot.animals_count >= lot.capacity
+                                        ? <View style={ps.fullBadge}><Text style={ps.fullBadgeTxt}>LLENO</Text></View>
+                                        : <Ionicons name="chevron-forward" size={14} color={Colors.textDisabled} />
+                                    }
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={ps.lotDeleteBtn}
+                                    onPress={() => handleDeleteLot(lot.id, lot.name)}
+                                >
+                                    <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                                </TouchableOpacity>
                             </View>
                         );
                     })}
@@ -282,8 +319,9 @@ function PastureCard({
 // ─── Pantalla principal ───────────────────────────────────────────────────────
 
 export default function PasturesScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { pastures, loading, error, fetchPastures, createPasture, updatePasture, deactivatePasture } = usePastures();
+    const { pastures, loading, error, fetchPastures, createPasture, updatePasture, deactivatePasture, deletePasture } = usePastures();
     const { createLot } = useLots();
 
     const [showPastureModal, setShowPastureModal] = useState(false);
@@ -312,7 +350,7 @@ export default function PasturesScreen() {
         <View style={ps.root}>
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
-            <View style={ps.header}>
+            <View style={[ps.header, { paddingTop: insets.top + 12 }]}>
                 <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management' as any)} style={ps.backBtn}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
@@ -357,6 +395,16 @@ export default function PasturesScreen() {
                         onAddLot={() => openAddLot(item)}
                         onEdit={() => openEditPasture(item)}
                         onDeactivate={() => handleDeactivate(item.id)}
+                        onDelete={async () => {
+                            const ok = await deletePasture(item.id);
+                            if (!ok) Alert.alert('No se pudo eliminar', error ?? 'El potrero tiene animales activos en sus lotes.');
+                        }}
+                        onLotPress={(lotId, lotName, lotType) =>
+                            router.push({
+                                pathname: '/views/(tabs)/admin/Ranch/Pastures/LotDetail' as any,
+                                params: { lotId, lotName, lotType },
+                            })
+                        }
                     />
                 )}
                 contentContainerStyle={ps.list}
@@ -401,7 +449,7 @@ export default function PasturesScreen() {
 
 const ms = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-    sheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, padding: Spacing.lg, paddingBottom: Platform.OS === 'ios' ? 40 : Spacing.lg },
+    sheet: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, padding: Spacing.lg, paddingBottom: Spacing.lg },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },
     title: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary },
     subHeader: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
@@ -421,7 +469,7 @@ const ms = StyleSheet.create({
 
 const ps = StyleSheet.create({
     root: { flex: 1, backgroundColor: Colors.background },
-    header: { flexDirection: 'row', alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 60 : 20, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, backgroundColor: Colors.background, gap: Spacing.md },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, backgroundColor: Colors.background, gap: Spacing.md },
     backBtn: { padding: 4 },
     titleWrap: { flex: 1 },
     title: { ...Typography.h2, color: Colors.primary, fontWeight: '800', fontSize: 22 },
@@ -444,7 +492,9 @@ const ps = StyleSheet.create({
     actionBtn: { padding: 6 },
 
     lotsContainer: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border },
-    lotRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderLeftWidth: 3, paddingLeft: 10, marginTop: 8, gap: 8, backgroundColor: Colors.background, borderRadius: BorderRadius.sm },
+    lotRow: { flexDirection: 'row', alignItems: 'center', borderLeftWidth: 3, paddingLeft: 10, marginTop: 8, backgroundColor: Colors.background, borderRadius: BorderRadius.sm },
+    lotRowContent: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 8 },
+    lotDeleteBtn: { padding: 8 },
     lotTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
     lotTypeTxt: { fontSize: 10, fontWeight: '800' },
     lotInfo: { flex: 1 },

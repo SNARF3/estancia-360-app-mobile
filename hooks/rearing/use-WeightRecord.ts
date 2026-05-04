@@ -59,8 +59,8 @@ export function useWeightRecord() {
             if (!session) throw new Error('No hay sesión activa.');
             const db = await getDb();
 
-            const animal = await db.getFirstAsync<{ id: string; id_lot: string | null; id_productive_status: number }>(
-                `SELECT id, id_lot, id_productive_status FROM ranch_animals
+            const animal = await db.getFirstAsync<{ id: string; id_lot: string | null }>(
+                `SELECT id, id_lot FROM ranch_animals
                  WHERE id_ranch = ? AND code = ? COLLATE NOCASE AND id_status = 1 LIMIT 1`,
                 [session.id_ranch, formData.animalCode.trim()]
             );
@@ -68,15 +68,21 @@ export function useWeightRecord() {
                 setError(`No se encontró el animal con código "${formData.animalCode}".`);
                 return false;
             }
-            if (animal.id_productive_status !== 2 && animal.id_productive_status !== 3) {
-                setError('El animal debe estar en Recría o Engorde para registrar un pesaje.');
+            if (!animal.id_lot) {
+                setError('El animal no está registrado en ningún lote. Asignalo a un lote desde la pantalla de Potreros antes de registrar un pesaje.');
                 return false;
             }
+
+            console.log("DEBUG PESAJE: Animal encontrado:", {
+                id: animal.id,
+                id_lot: animal.id_lot,
+                weightToRegister: w
+            });
 
             await registerWeightRecord({
                 id_user: session.id_user,
                 id_ranch_animal: animal.id,
-                id_lot: animal.id_lot ?? 'no_lot',
+                id_lot: animal.id_lot || null,
                 event_date: new Date(formData.eventDate).toISOString(),
                 weight: w,
                 weight_type: formData.weightType,

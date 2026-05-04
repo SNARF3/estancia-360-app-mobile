@@ -196,7 +196,30 @@ export function usePastures() {
         }
     }, [fetchPastures]);
 
-    return { pastures, loading, error, fetchPastures, createPasture, updatePasture, deactivatePasture };
+    const deletePasture = useCallback(async (id: string): Promise<boolean> => {
+        setError(null);
+        try {
+            const db = await getDb();
+            const check = await db.getFirstAsync<{ count: number }>(
+                `SELECT COUNT(*) as count FROM ranch_animals a
+                 JOIN ranch_lots l ON l.id = a.id_lot
+                 WHERE l.id_ranch_pasture = ? AND a.id_status != 3`, [id]
+            );
+            if ((check?.count ?? 0) > 0) {
+                setError('No se puede eliminar: el potrero tiene animales activos en sus lotes.');
+                return false;
+            }
+            await db.runAsync(`DELETE FROM ranch_lots WHERE id_ranch_pasture = ?`, [id]);
+            await db.runAsync(`DELETE FROM ranch_pastures WHERE id = ?`, [id]);
+            await fetchPastures();
+            return true;
+        } catch (e: any) {
+            setError(e.message ?? 'Error al eliminar el potrero.');
+            return false;
+        }
+    }, [fetchPastures]);
+
+    return { pastures, loading, error, fetchPastures, createPasture, updatePasture, deactivatePasture, deletePasture };
 }
 
 // ─── Hook de lotes ────────────────────────────────────────────────────────────
@@ -310,7 +333,27 @@ export function useLots(id_ranch_pasture?: string) {
         }
     }, [fetchLots]);
 
-    return { lots, loading, error, fetchLots, createLot, updateLot, deactivateLot };
+    const deleteLot = useCallback(async (id: string): Promise<boolean> => {
+        setError(null);
+        try {
+            const db = await getDb();
+            const check = await db.getFirstAsync<{ count: number }>(
+                `SELECT COUNT(*) as count FROM ranch_animals WHERE id_lot = ? AND id_status != 3`, [id]
+            );
+            if ((check?.count ?? 0) > 0) {
+                setError('No se puede eliminar: el lote tiene animales activos.');
+                return false;
+            }
+            await db.runAsync(`DELETE FROM ranch_lots WHERE id = ?`, [id]);
+            await fetchLots();
+            return true;
+        } catch (e: any) {
+            setError(e.message ?? 'Error al eliminar el lote.');
+            return false;
+        }
+    }, [fetchLots]);
+
+    return { lots, loading, error, fetchLots, createLot, updateLot, deactivateLot, deleteLot };
 }
 
 // ─── Hook para selector de lote (usado en WeaningForm, etc.) ─────────────────

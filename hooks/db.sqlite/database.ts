@@ -51,6 +51,7 @@ export const EVENT_TYPES = {
   TRATAMIENTO: 12,
   INCIDENTE: 13,
   ENTRADA_ENGORDE: 14,
+  CAMBIO_PROCESO: 15,
 } as const;
 
 export const RANCH_ROLES = {

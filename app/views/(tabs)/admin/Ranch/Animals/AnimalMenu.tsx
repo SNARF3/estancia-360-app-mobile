@@ -1,11 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
     Animated,
     FlatList,
     Modal,
-    Platform,
     RefreshControl,
     StatusBar,
     StyleSheet,
@@ -13,36 +12,13 @@ import {
     TextInput,
     TouchableOpacity,
     TouchableWithoutFeedback,
-    View
+    View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../../../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import { useAnimalClassification } from '../../../../../../hooks/Animals/offline/use-AnimalClassification';
-import {
-    useGetDiagnoses,
-    useGetParturitions,
-    useGetRearingSelections,
-    useGetServices,
-    useGetWeanings,
-    type DiagnosisRecord,
-    type ParturitionRecord,
-    type RearingSelectionRecord,
-    type ServiceRecord,
-    type WeaningRecord,
-} from '../../../../../../hooks/Animals/offline/use-AnimalHistory';
 import { Animal, useGetListAnimals } from '../../../../../../hooks/Animals/offline/use-GetListAnimals';
-
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
-
-type TabKey = 'todos' | 'servicios' | 'gestaciones' | 'partos' | 'destetes';
-
-const TABS: { key: TabKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: 'todos', label: 'Todos', icon: 'grid-outline' },
-    { key: 'servicios', label: 'Servicios', icon: 'heart-outline' },
-    { key: 'gestaciones', label: 'Gestación', icon: 'analytics-outline' },
-    { key: 'partos', label: 'Partos', icon: 'fitness-outline' },
-    { key: 'destetes', label: 'Destetes', icon: 'git-branch-outline' },
-];
 
 // ─── Acciones del menú contextual ─────────────────────────────────────────────
 
@@ -52,50 +28,28 @@ const ANIMAL_ACTIONS: {
     route: string;
     paramKey: string;
 }[] = [
-        { label: 'Registrar Pesaje', icon: 'scale', route: '/views/(tabs)/admin/Ranch/rearing/WeightRecordForm', paramKey: 'animalCode' },
-        { label: 'Vacunación', icon: 'shield-checkmark', route: '/views/(tabs)/admin/Ranch/health/VaccinationForm', paramKey: 'animalCode' },
-        { label: 'Tratamiento', icon: 'bandage', route: '/views/(tabs)/admin/Ranch/health/TreatmentForm', paramKey: 'animalCode' },
-        { label: 'Incidente Sanitario', icon: 'warning', route: '/views/(tabs)/admin/Ranch/health/HealthIncidentForm', paramKey: 'animalCode' },
-        { label: 'Registrar Servicio', icon: 'heart', route: '/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm', paramKey: 'animalCode' },
-        { label: 'Diagnóstico Gestación', icon: 'analytics', route: '/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm', paramKey: 'animalCode' },
-        { label: 'Registrar Parto', icon: 'fitness', route: '/views/(tabs)/admin/Ranch/breeding/ParturitionForm', paramKey: 'animalCode' },
-        { label: 'Registrar Destete', icon: 'git-branch', route: '/views/(tabs)/admin/Ranch/breeding/WeaningForm', paramKey: 'criaCode' },
-    ];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const fmtDate = (d: string) =>
-    new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' });
-
-const SERVICE_LABELS: Record<string, string> = {
-    natural: 'Monta Natural', artificial_insemination: 'IA', embryo_transfer: 'T. Embrionaria',
-};
+    { label: 'Registrar Pesaje',      icon: 'scale',            route: '/views/(tabs)/admin/Ranch/rearing/WeightRecordForm',          paramKey: 'animalCode' },
+    { label: 'Vacunación',             icon: 'shield-checkmark', route: '/views/(tabs)/admin/Ranch/health/VaccinationForm',            paramKey: 'animalCode' },
+    { label: 'Tratamiento',            icon: 'bandage',          route: '/views/(tabs)/admin/Ranch/health/TreatmentForm',              paramKey: 'animalCode' },
+    { label: 'Incidente Sanitario',    icon: 'warning',          route: '/views/(tabs)/admin/Ranch/health/HealthIncidentForm',         paramKey: 'animalCode' },
+    { label: 'Registrar Servicio',     icon: 'heart',            route: '/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm',      paramKey: 'animalCode' },
+    { label: 'Diagnóstico Gestación',  icon: 'analytics',        route: '/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm',   paramKey: 'animalCode' },
+    { label: 'Registrar Parto',        icon: 'fitness',          route: '/views/(tabs)/admin/Ranch/breeding/ParturitionForm',          paramKey: 'animalCode' },
+    { label: 'Registrar Destete',      icon: 'git-branch',       route: '/views/(tabs)/admin/Ranch/breeding/WeaningForm',              paramKey: 'criaCode'   },
+];
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function AnimalMenuScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<TabKey>('todos');
     const [searchQuery, setSearchQuery] = useState('');
     const [menuAnimal, setMenuAnimal] = useState<Animal | null>(null);
     const [menuVisible, setMenuVisible] = useState(false);
     const menuAnim = useRef(new Animated.Value(0)).current;
 
-    const { animals, loading: lAni, refreshAnimals, meta } = useGetListAnimals();
+    const { animals, loading, refreshAnimals, meta } = useGetListAnimals();
     const classifiedAnimals = useAnimalClassification(animals);
-
-    const { records: services, loading: lSvc, fetch: fetchSvc } = useGetServices();
-    const { records: diagnoses, loading: lDiag, fetch: fetchDiag } = useGetDiagnoses();
-    const { records: parturitions, loading: lPart, fetch: fetchPart } = useGetParturitions();
-    const { records: weanings, loading: lWean, fetch: fetchWean } = useGetWeanings();
-    const { records: selections, loading: lSel, fetch: fetchSel } = useGetRearingSelections();
-
-    useEffect(() => {
-        if (activeTab === 'servicios') fetchSvc();
-        if (activeTab === 'gestaciones') fetchDiag();
-        if (activeTab === 'partos') fetchPart();
-        if (activeTab === 'destetes') fetchWean();
-    }, [activeTab]);
 
     // ── Menú contextual ──────────────────────────────────────────────────────
 
@@ -114,14 +68,13 @@ export default function AnimalMenuScreen() {
 
     const handleAction = useCallback((route: string, paramKey: string) => {
         if (!menuAnimal) return;
-        const code = menuAnimal.code;
         closeMenu();
         setTimeout(() => {
-            router.push({ pathname: route as any, params: { [paramKey]: code } });
+            router.push({ pathname: route as any, params: { [paramKey]: menuAnimal.code } });
         }, 200);
-    }, [menuAnimal]);
+    }, [menuAnimal, closeMenu]);
 
-    // ── Lista de animales filtrada ───────────────────────────────────────────
+    // ── Lista filtrada ───────────────────────────────────────────────────────
 
     const filteredAnimals = useMemo(() => {
         if (!searchQuery) return classifiedAnimals;
@@ -141,7 +94,9 @@ export default function AnimalMenuScreen() {
         const sBg = isOk ? Colors.successLight : Colors.errorLight;
         const { classification: cls } = item;
         return (
-            <TouchableOpacity style={styles.animalCard} activeOpacity={0.7}
+            <TouchableOpacity
+                style={styles.animalCard}
+                activeOpacity={0.7}
                 onPress={() => router.push({
                     pathname: '/views/(tabs)/admin/Ranch/Animals/DetailAnimal',
                     params: {
@@ -188,135 +143,47 @@ export default function AnimalMenuScreen() {
         );
     }, [openMenu]);
 
-    // ── Tarjetas de historial ────────────────────────────────────────────────
+    // ── JSX ──────────────────────────────────────────────────────────────────
 
-    const renderService = ({ item }: { item: ServiceRecord }) => (
-        <View style={styles.histCard}>
-            <View style={[styles.histAccent, { backgroundColor: '#F59E0B' }]} />
-            <View style={styles.histBody}>
-                <View style={styles.histHeader}>
-                    <Text style={styles.histAnimal}>{item.animal_code}</Text>
-                    <Text style={styles.histDate}>{fmtDate(item.event_date)}</Text>
+    return (
+        <View style={styles.root}>
+            <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+
+            {/* Header */}
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+                <View style={styles.headerRow}>
+                    <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management')} style={styles.backBtn}>
+                        <Ionicons name="arrow-back" size={28} color={Colors.primary} />
+                    </TouchableOpacity>
+                    <View style={styles.titleRow}>
+                        <Text style={styles.title}>Mis Animales</Text>
+                        <TouchableOpacity onPress={refreshAnimals} style={styles.reloadBtn}>
+                            <Ionicons name="refresh" size={26} color={Colors.primary} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-                <Text style={styles.histType}>{SERVICE_LABELS[item.service_type] ?? item.service_type}</Text>
-                {item.male_code && <Text style={styles.histDetail}>🐂 Macho: {item.male_code}</Text>}
-                {item.semen_breed && <Text style={styles.histDetail}>🧬 Semen: {item.semen_breed}</Text>}
-                {item.technician && <Text style={styles.histDetail}>👤 Técnico: {item.technician}</Text>}
-            </View>
-            {item.is_synced === 0 && <View style={styles.pendingDot} />}
-        </View>
-    );
 
-    const renderDiagnosis = ({ item }: { item: DiagnosisRecord }) => {
-        const isPrg = item.result === 'pregnant';
-        const resColor = isPrg ? Colors.primary : '#EF4444';
-        const resLabel = isPrg ? 'Preñada' : 'Vacía';
-        return (
-            <View style={styles.histCard}>
-                <View style={[styles.histAccent, { backgroundColor: resColor }]} />
-                <View style={styles.histBody}>
-                    <View style={styles.histHeader}>
-                        <Text style={styles.histAnimal}>{item.animal_code}</Text>
-                        <Text style={styles.histDate}>{fmtDate(item.event_date)}</Text>
-                    </View>
-                    <View style={[styles.chip, { backgroundColor: resColor + '20', borderColor: resColor }]}>
-                        <Text style={[styles.chipText, { color: resColor }]}>{resLabel}</Text>
-                    </View>
-                    <Text style={styles.histDetail}>Método: {item.method === 'palpation' ? 'Palpación' : 'Ecografía'}</Text>
-                    {item.gestation_days && <Text style={styles.histDetail}>📅 {item.gestation_days} días gestación</Text>}
-                    {item.estimated_birth && <Text style={styles.histDetail}>🍼 Parto est.: {fmtDate(item.estimated_birth)}</Text>}
-                    {item.veterinarian && <Text style={styles.histDetail}>👤 {item.veterinarian}</Text>}
+                <View style={styles.searchBox}>
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Buscar por arete, raza o tipo..."
+                        value={searchQuery}
+                        onChangeText={setSearchQuery}
+                        placeholderTextColor={Colors.textDisabled}
+                    />
+                    <Ionicons name="search" size={22} color={Colors.primary} />
                 </View>
-                {item.is_synced === 0 && <View style={styles.pendingDot} />}
             </View>
-        );
-    };
 
-    const renderParturition = ({ item }: { item: ParturitionRecord }) => {
-        const alive = item.cria_status === 'alive';
-        const c = alive ? Colors.primary : '#EF4444';
-        return (
-            <View style={styles.histCard}>
-                <View style={[styles.histAccent, { backgroundColor: '#8B5CF6' }]} />
-                <View style={styles.histBody}>
-                    <View style={styles.histHeader}>
-                        <Text style={styles.histAnimal}>{item.animal_code}</Text>
-                        <Text style={styles.histDate}>{fmtDate(item.event_date)}</Text>
-                    </View>
-                    <Text style={styles.histType}>{item.birth_type === 'normal' ? 'Normal' : item.birth_type === 'assisted' ? 'Asistido' : 'Cesárea'}</Text>
-                    <View style={[styles.chip, { backgroundColor: c + '20', borderColor: c }]}>
-                        <Text style={[styles.chipText, { color: c }]}>Cría {alive ? 'Viva' : 'Muerta'}</Text>
-                    </View>
-                    {item.cria_code && <Text style={styles.histDetail}>🐄 Cría: {item.cria_code}</Text>}
-                    {item.cria_weight && <Text style={styles.histDetail}>⚖️ {(item.cria_weight / 1000).toFixed(1)} kg</Text>}
-                </View>
-                {item.is_synced === 0 && <View style={styles.pendingDot} />}
-            </View>
-        );
-    };
-
-    const renderWeaning = ({ item }: { item: WeaningRecord }) => (
-        <View style={styles.histCard}>
-            <View style={[styles.histAccent, { backgroundColor: '#0EA5E9' }]} />
-            <View style={styles.histBody}>
-                <View style={styles.histHeader}>
-                    <Text style={styles.histAnimal}>{item.cria_code}</Text>
-                    <Text style={styles.histDate}>{fmtDate(item.event_date)}</Text>
-                </View>
-                <Text style={styles.histType}>Destete</Text>
-                {item.weaning_weight && <Text style={styles.histDetail}>⚖️ {item.weaning_weight} kg</Text>}
-                {item.weaning_age && <Text style={styles.histDetail}>📅 {item.weaning_age} días</Text>}
-                {item.weaning_weight && item.weaning_age && (
-                    <Text style={styles.histDetail}>
-                        📈 GDP: {((item.weaning_weight / item.weaning_age) * 1000).toFixed(0)} g/día
-                    </Text>
-                )}
-                {item.lot_dest_name && <Text style={styles.histDetail}>📍 {item.lot_dest_name}</Text>}
-            </View>
-            {item.is_synced === 0 && <View style={styles.pendingDot} />}
-        </View>
-    );
-
-    const renderSelection = ({ item }: { item: RearingSelectionRecord }) => {
-        const colors: Record<string, string> = { replacement: Colors.primary, fattening: '#F59E0B', sale: '#EF4444' };
-        const labels: Record<string, string> = { replacement: 'Reposición', fattening: 'Engorde', sale: 'Venta' };
-        const c = colors[item.destination] ?? Colors.textSecondary;
-        return (
-            <View style={styles.histCard}>
-                <View style={[styles.histAccent, { backgroundColor: c }]} />
-                <View style={styles.histBody}>
-                    <View style={styles.histHeader}>
-                        <Text style={styles.histAnimal}>{item.animal_code}</Text>
-                        <Text style={styles.histDate}>{fmtDate(item.event_date)}</Text>
-                    </View>
-                    <View style={[styles.chip, { backgroundColor: c + '20', borderColor: c }]}>
-                        <Text style={[styles.chipText, { color: c }]}>{labels[item.destination] ?? item.destination}</Text>
-                    </View>
-                    {item.weight_at_selection && <Text style={styles.histDetail}>⚖️ {item.weight_at_selection} kg</Text>}
-                    {item.body_condition && <Text style={styles.histDetail}>💪 CC: {item.body_condition}/5</Text>}
-                    {item.lot_dest_name && <Text style={styles.histDetail}>📍 {item.lot_dest_name}</Text>}
-                </View>
-                {item.is_synced === 0 && <View style={styles.pendingDot} />}
-            </View>
-        );
-    };
-
-    const Empty = ({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) => (
-        <View style={styles.empty}>
-            <Ionicons name={icon} size={48} color={Colors.textDisabled} />
-            <Text style={styles.emptyText}>{text}</Text>
-        </View>
-    );
-
-    // ── Contenido por tab ────────────────────────────────────────────────────
-
-    const tabContent = () => {
-        const commonProps = { contentContainerStyle: styles.listContent, showsVerticalScrollIndicator: false, ListFooterComponent: <View style={{ height: 100 }} /> };
-        switch (activeTab) {
-            case 'todos': return (
-                <FlatList {...commonProps}
-                    data={filteredAnimals} renderItem={renderAnimal} keyExtractor={i => i.id}
-                    refreshControl={<RefreshControl refreshing={lAni} onRefresh={refreshAnimals} colors={[Colors.primary]} />}
+            {/* Lista */}
+            <ScreenContainer scrollable={false} style={styles.body}>
+                <FlatList
+                    data={filteredAnimals}
+                    renderItem={renderAnimal}
+                    keyExtractor={i => i.id}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.listContent}
+                    refreshControl={<RefreshControl refreshing={loading} onRefresh={refreshAnimals} colors={[Colors.primary]} />}
                     ListHeaderComponent={
                         <View style={styles.summaryCard}>
                             <View style={styles.summaryItem}>
@@ -330,107 +197,25 @@ export default function AnimalMenuScreen() {
                             </View>
                         </View>
                     }
-                    ListEmptyComponent={!lAni ? <Empty icon="clipboard-outline" text="No hay animales registrados" /> : null}
+                    ListEmptyComponent={
+                        !loading ? (
+                            <View style={styles.empty}>
+                                <Ionicons name="clipboard-outline" size={48} color={Colors.textDisabled} />
+                                <Text style={styles.emptyText}>No hay animales registrados</Text>
+                            </View>
+                        ) : null
+                    }
+                    ListFooterComponent={<View style={{ height: 100 }} />}
                 />
-            );
-            case 'servicios': return (
-                <FlatList {...commonProps} data={services} renderItem={renderService} keyExtractor={i => i.id}
-                    refreshControl={<RefreshControl refreshing={lSvc} onRefresh={() => fetchSvc()} colors={[Colors.primary]} />}
-                    ListEmptyComponent={!lSvc ? <Empty icon="heart-outline" text="No hay servicios registrados" /> : null}
-                />
-            );
-            case 'gestaciones': return (
-                <FlatList {...commonProps} data={diagnoses} renderItem={renderDiagnosis} keyExtractor={i => i.id}
-                    refreshControl={<RefreshControl refreshing={lDiag} onRefresh={() => fetchDiag()} colors={[Colors.primary]} />}
-                    ListEmptyComponent={!lDiag ? <Empty icon="analytics-outline" text="No hay diagnósticos registrados" /> : null}
-                />
-            );
-            case 'partos': return (
-                <FlatList {...commonProps} data={parturitions} renderItem={renderParturition} keyExtractor={i => i.id}
-                    refreshControl={<RefreshControl refreshing={lPart} onRefresh={() => fetchPart()} colors={[Colors.primary]} />}
-                    ListEmptyComponent={!lPart ? <Empty icon="fitness-outline" text="No hay partos registrados" /> : null}
-                />
-            );
-            case 'destetes': return (
-                <FlatList {...commonProps} data={weanings} renderItem={renderWeaning} keyExtractor={i => i.id}
-                    refreshControl={<RefreshControl refreshing={lWean} onRefresh={() => fetchWean()} colors={[Colors.primary]} />}
-                    ListEmptyComponent={!lWean ? <Empty icon="git-branch-outline" text="No hay destetes registrados" /> : null}
-                />
-            );
-        }
-    };
 
-    // ── JSX ──────────────────────────────────────────────────────────────────
-
-    return (
-        <View style={styles.root}>
-            <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
-
-            {/* Header */}
-            <View style={styles.header}>
-                <View style={styles.headerRow}>
-                    <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management')} style={styles.backBtn}>
-                        <Ionicons name="arrow-back" size={28} color={Colors.primary} />
-                    </TouchableOpacity>
-                    <View style={styles.titleRow}>
-                        <Text style={styles.title}>Corral Virtual</Text>
-                        <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
-                            <TouchableOpacity
-                                onPress={() => router.push('/views/(tabs)/admin/bulkImport/bulkImport' as any)}
-                                style={styles.reloadBtn}
-                            >
-                                <Ionicons name="cloud-upload-outline" size={26} color={Colors.primary} />
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={refreshAnimals} style={styles.reloadBtn}>
-                                <Ionicons name="refresh" size={26} color={Colors.primary} />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-
-                {activeTab === 'todos' && (
-                    <View style={styles.searchBox}>
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Buscar por arete, raza o tipo..."
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            placeholderTextColor={Colors.textDisabled}
-                        />
-                        <Ionicons name="search" size={22} color={Colors.primary} />
-                    </View>
-                )}
-
-                <FlatList
-                    horizontal data={TABS} keyExtractor={t => t.key}
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.tabsRow}
-                    renderItem={({ item: tab }) => {
-                        const on = activeTab === tab.key;
-                        return (
-                            <TouchableOpacity
-                                style={[styles.tab, on && styles.tabOn]}
-                                onPress={() => setActiveTab(tab.key)}
-                            >
-                                <Ionicons name={tab.icon} size={13} color={on ? Colors.white : Colors.textSecondary} />
-                                <Text style={[styles.tabTxt, on && styles.tabTxtOn]}>{tab.label}</Text>
-                            </TouchableOpacity>
-                        );
-                    }}
-                />
-            </View>
-
-            {/* Contenido */}
-            <ScreenContainer scrollable={false} style={styles.body}>
-                {tabContent()}
-                {activeTab === 'todos' && (
-                    <TouchableOpacity style={styles.fab}
-                        onPress={() => router.push('/views/(tabs)/admin/Ranch/Animals/AddAnimal')}
-                    >
-                        <Ionicons name="add" size={32} color={Colors.white} />
-                        <Text style={styles.fabTxt}>NUEVO REGISTRO</Text>
-                    </TouchableOpacity>
-                )}
+                {/* FAB */}
+                <TouchableOpacity
+                    style={styles.fab}
+                    onPress={() => router.push('/views/(tabs)/admin/Ranch/Animals/AddAnimal')}
+                >
+                    <Ionicons name="add" size={32} color={Colors.white} />
+                    <Text style={styles.fabTxt}>NUEVO ANIMAL</Text>
+                </TouchableOpacity>
             </ScreenContainer>
 
             {/* Menú contextual */}
@@ -443,6 +228,7 @@ export default function AnimalMenuScreen() {
                                 {
                                     opacity: menuAnim,
                                     transform: [{ scale: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
+                                    paddingBottom: insets.bottom + 16,
                                 },
                             ]}>
                                 <View style={styles.menuHead}>
@@ -484,7 +270,7 @@ export default function AnimalMenuScreen() {
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: Colors.background },
     body: { flex: 1, paddingHorizontal: Spacing.lg },
-    header: { backgroundColor: Colors.background, paddingTop: Platform.OS === 'ios' ? 60 : 20, paddingBottom: 8, paddingHorizontal: Spacing.lg },
+    header: { backgroundColor: Colors.background, paddingBottom: 8, paddingHorizontal: Spacing.lg },
     headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm },
     backBtn: { marginRight: Spacing.md },
     titleRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -492,11 +278,6 @@ const styles = StyleSheet.create({
     reloadBtn: { padding: 4 },
     searchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: BorderRadius.xl, paddingHorizontal: Spacing.lg, height: 48, ...Shadows.card, borderWidth: 1, borderColor: Colors.border, marginBottom: Spacing.sm },
     searchInput: { flex: 1, ...Typography.body, color: Colors.textPrimary },
-    tabsRow: { paddingVertical: Spacing.xs, gap: 8 },
-    tab: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 7, borderRadius: BorderRadius.xl, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border },
-    tabOn: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-    tabTxt: { fontSize: 12, fontWeight: '700', color: Colors.textSecondary },
-    tabTxtOn: { color: Colors.white },
 
     summaryCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: Colors.primary, borderRadius: BorderRadius.lg, padding: Spacing.lg, marginBottom: Spacing.md, ...Shadows.card },
     summaryDiv: { width: 1, height: '80%', backgroundColor: Colors.white + '30' },
@@ -522,18 +303,6 @@ const styles = StyleSheet.create({
     catText: { fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
     dotsBtn: { padding: 4 },
 
-    histCard: { flexDirection: 'row', backgroundColor: Colors.white, borderRadius: BorderRadius.lg, marginBottom: Spacing.md, ...Shadows.card, overflow: 'hidden' },
-    histAccent: { width: 5 },
-    histBody: { flex: 1, padding: Spacing.md },
-    histHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-    histAnimal: { fontSize: 16, fontWeight: '800', color: Colors.primary },
-    histDate: { fontSize: 11, color: Colors.textSecondary },
-    histType: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary, marginBottom: 4 },
-    histDetail: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-    chip: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 6, borderWidth: 1, marginBottom: 4 },
-    chipText: { fontSize: 11, fontWeight: '800' },
-    pendingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#F59E0B', position: 'absolute', top: 8, right: 8 },
-
     fab: { position: 'absolute', bottom: 30, left: Spacing.lg, right: Spacing.lg, backgroundColor: Colors.primary, height: 60, borderRadius: BorderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', ...Shadows.floatingButton, zIndex: 20 },
     fabTxt: { color: Colors.white, fontSize: 18, fontWeight: '800', marginLeft: 10 },
 
@@ -541,7 +310,7 @@ const styles = StyleSheet.create({
     emptyText: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
 
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-    menu: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, paddingBottom: Platform.OS === 'ios' ? 34 : 20, ...Shadows.card },
+    menu: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, ...Shadows.card },
     menuHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
     menuIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.primary + '15', justifyContent: 'center', alignItems: 'center' },
     menuCode: { flex: 1, fontSize: 17, fontWeight: '800', color: Colors.primary },

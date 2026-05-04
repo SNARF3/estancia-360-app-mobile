@@ -14,6 +14,7 @@ import { showMessage } from 'react-native-flash-message';
 import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../constants/theme';
 import { getUserData, SessionParams } from '../../../../hooks/auth/use-Auth';
+import { getDb } from '../../../../hooks/db.sqlite/db-pool';
 
 // ─── Plan ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,35 @@ export default function UsuarioScreen() {
   );
 
   const plan = PLAN_FREE; // por ahora siempre FREE
+
+  const handleClearTestData = () => {
+    Alert.alert(
+      'Borrar datos de prueba',
+      'Esto eliminará TODOS los animales y sus registros (pesajes, eventos, cría, sanidad, etc.). Los potreros y lotes se conservan. ¿Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Borrar todo', style: 'destructive', onPress: async () => {
+            try {
+              const db = await getDb();
+              const tables = [
+                'weight_records', 'rearing_selections', 'fattening_entries',
+                'feed_records', 'vaccinations', 'treatments', 'health_incidents',
+                'breeding_services', 'gestation_diagnoses', 'parturitions', 'weanings',
+                'animal_declared_history', 'animal_events', 'ranch_animals',
+              ];
+              for (const t of tables) {
+                await db.runAsync(`DELETE FROM ${t}`);
+              }
+              showMessage({ message: 'Datos borrados', description: 'Todos los animales y registros fueron eliminados.', type: 'success', floating: true });
+            } catch (e: any) {
+              Alert.alert('Error', e.message ?? 'No se pudieron borrar los datos.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -191,6 +221,12 @@ export default function UsuarioScreen() {
           </View>
         </View>
 
+        {/* Borrar datos de prueba */}
+        <TouchableOpacity style={styles.clearBtn} onPress={handleClearTestData} activeOpacity={0.8}>
+          <Ionicons name="trash-outline" size={22} color={Colors.error} />
+          <Text style={styles.logoutText}>Borrar datos de prueba</Text>
+        </TouchableOpacity>
+
         {/* Logout */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
           <Ionicons name="log-out-outline" size={22} color={Colors.error} />
@@ -208,7 +244,7 @@ export default function UsuarioScreen() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
+    paddingTop: 60,
     flex: 1,
     backgroundColor: Colors.background,
   },
@@ -375,6 +411,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textPrimary,
     flex: 1,
+  },
+  clearBtn: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.md,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.error + '40',
+    marginBottom: Spacing.sm,
+    ...Shadows.tabBar,
   },
   logoutBtn: {
     backgroundColor: Colors.white,

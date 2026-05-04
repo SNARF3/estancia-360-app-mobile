@@ -42,7 +42,7 @@ export interface SyncError {
 interface BatchItem {
     localId: string;
     operation: 'create' | 'update' | 'delete';
-    serverId?: string;
+    serverId?: number | string;
     data: Record<string, unknown>;
     happenedAt?: string;
 }
@@ -66,6 +66,7 @@ type SyncTableConfig = {
     table: string;
     fkFields: string[];
     fieldDefaults?: Record<string, unknown>;
+    whereExtra?: string;  // filtro adicional AND'd con is_synced=0 en la consulta
 };
 
 const CRIA_CONFIG: SyncTableConfig[] = [
@@ -77,6 +78,8 @@ const CRIA_CONFIG: SyncTableConfig[] = [
     { key: 'gestationDiagnoses',      table: 'gestation_diagnoses',     fkFields: ['id_event', 'id_service'] },
     { key: 'parturitions',            table: 'parturitions',            fkFields: ['id_event', 'id_diagnosis', 'id_cria'] },
     { key: 'weanings',                table: 'weanings',                fkFields: ['id_event', 'id_cria', 'id_lot_dest'] },
+    // Nota: CAMBIO_PROCESO (tipo 15) no va aquí porque animal_events no tiene local_id en el
+    // servidor — el cambio de estado queda capturado en ranch_animals.id_productive_status.
 ];
 
 const RECRIA_CONFIG: SyncTableConfig[] = [
@@ -84,7 +87,8 @@ const RECRIA_CONFIG: SyncTableConfig[] = [
     { key: 'rearingSelections', table: 'rearing_selections',  fkFields: ['id_event', 'id_lot_dest'] },
 ];
 
-export const ALL_TABLES = [...CRIA_CONFIG, ...RECRIA_CONFIG].map(c => c.table);
+// Tablas únicas (animal_events puede aparecer en config con filtro, deduplicar)
+export const ALL_TABLES = [...new Set([...CRIA_CONFIG, ...RECRIA_CONFIG].map(c => c.table))];
 const META_FIELDS = new Set(['is_synced', 'server_id', 'sync_action', 'synced_at']);
 
 // Campos que SQLite guarda como string pero el servidor espera como integer
@@ -201,13 +205,19 @@ function toBatchItems(
     serverIdMap: Map<string, string>,
     fieldDefaults: Record<string, unknown> = {}
 ): BatchItem[] {
-    return rows.map(row => ({
-        localId: row.id as string,
-        operation: OPERATION_MAP[(row.sync_action as string) ?? 'INSERT'] ?? 'create',
-        ...(row.server_id ? { serverId: row.server_id as string } : {}),
-        data: buildData(row, fkFields, serverIdMap, fieldDefaults),
-        happenedAt: (row.created_at ?? row.updated_at) as string | undefined,
-    }));
+    return rows.map(row => {
+        const rawServerId = row.server_id as string | null | undefined;
+        const serverId = rawServerId
+            ? (/^\d+$/.test(rawServerId) ? parseInt(rawServerId, 10) : rawServerId)
+            : undefined;
+        return {
+            localId: row.id as string,
+            operation: OPERATION_MAP[(row.sync_action as string) ?? 'INSERT'] ?? 'create',
+            ...(serverId != null ? { serverId } : {}),
+            data: buildData(row, fkFields, serverIdMap, fieldDefaults),
+            happenedAt: (row.created_at ?? row.updated_at) as string | undefined,
+        };
+    });
 }
 
 // ─── Aplicar respuesta ────────────────────────────────────────────────────────
@@ -249,7 +259,7 @@ async function applyResponse(
                 }
                 try {
                     const result = await db.runAsync(
-                        `UPDATE ${table} SET is_synced=1, server_id=?, synced_at=?, sync_action=NULL WHERE id=?`,
+                        `UPDATE ${table} SET is_synced=1, server_id=?, synced_at=? WHERE id=?`,
                         [String(item.serverId), now(), item.localId]
                     );
                     if (result.changes > 0) synced++;
@@ -305,13 +315,13 @@ async function syncCria(
 
     onProgress?.('Preparando datos de Cría...', 15);
     const batch: Record<string, BatchItem[]> = {};
-    for (const { key, table, fkFields, fieldDefaults } of CRIA_CONFIG) {
+    for (const { key, table, fkFields, fieldDefaults, whereExtra } of CRIA_CONFIG) {
         try {
-            // Para tablas con id_event, incluir id_ranch_animal del evento
             const needsEvent = fkFields.includes('id_event');
+            const extra = whereExtra ? ` AND ${needsEvent ? 't.' : ''}${whereExtra}` : '';
             const query = needsEvent
-                ? `SELECT t.*, ae.id_ranch_animal FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0`
-                : `SELECT * FROM ${table} WHERE is_synced = 0`;
+                ? `SELECT t.*, ae.id_ranch_animal FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
+                : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
             const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
 
             const rows = await db.getAllAsync<Record<string, unknown>>(query);
@@ -386,12 +396,13 @@ async function syncRecria(
 
     onProgress?.('Preparando datos de Recría...', 60);
     const batch: Record<string, BatchItem[]> = {};
-    for (const { key, table, fkFields, fieldDefaults } of RECRIA_CONFIG) {
+    for (const { key, table, fkFields, fieldDefaults, whereExtra } of RECRIA_CONFIG) {
         try {
             const needsEvent = fkFields.includes('id_event');
+            const extra = whereExtra ? ` AND ${needsEvent ? 't.' : ''}${whereExtra}` : '';
             const query = needsEvent
-                ? `SELECT t.*, ae.id_ranch_animal FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0`
-                : `SELECT * FROM ${table} WHERE is_synced = 0`;
+                ? `SELECT t.*, ae.id_ranch_animal FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
+                : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
             const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
 
             const rows = await db.getAllAsync<Record<string, unknown>>(query);
@@ -492,22 +503,36 @@ export async function getPendingCount(): Promise<number> {
     return total;
 }
 
-/** Descarga cambios del servidor y aplica localmente (solo registros ya sincronizados). */
-export async function pullFromServer(id_ranch: string): Promise<void> {
+export interface PullResult {
+    pulled: number;
+    error?: string;
+}
+
+/**
+ * Descarga cambios del servidor y aplica localmente.
+ * fullSync=true descarga desde el inicio del tiempo — útil al cambiar de dispositivo.
+ */
+export async function pullFromServer(
+    id_ranch: string,
+    options?: { fullSync?: boolean }
+): Promise<PullResult> {
     const db = await getDb();
     const token = await getAuthToken();
     const session = await db.getFirstAsync<{ last_sync: string | null }>(
         `SELECT last_sync FROM local_session WHERE id = 1`
     );
-    const since = session?.last_sync ?? '1970-01-01T00:00:00.000Z';
+    const since = options?.fullSync
+        ? '1970-01-01T00:00:00.000Z'
+        : (session?.last_sync ?? '1970-01-01T00:00:00.000Z');
 
     try {
         const res = await fetch(
             `${API_BASE_URL}/estancia-360/sync/pull?id_ranch=${id_ranch}&since=${encodeURIComponent(since)}`,
             { headers: { Authorization: `Bearer ${token}` } }
         );
-        if (!res.ok) return;
+        if (!res.ok) return { pulled: 0, error: `HTTP ${res.status}` };
         const data = await res.json() as Record<string, unknown[]>;
+        let pulled = 0;
         await db.withTransactionAsync(async () => {
             for (const [table, records] of Object.entries(data)) {
                 for (const record of records as Record<string, unknown>[]) {
@@ -522,17 +547,20 @@ export async function pullFromServer(id_ranch: string): Promise<void> {
                             `INSERT OR IGNORE INTO ${table} (server_id, is_synced, ${cols}) VALUES (?, 1, ${ph})`,
                             [record.id as string, ...Object.values(record)] as any
                         );
+                        pulled++;
                     } else if (existing.is_synced === 1) {
                         const updates = Object.keys(record).filter(k => k !== 'id').map(k => `${k} = ?`).join(', ');
                         await db.runAsync(
                             `UPDATE ${table} SET ${updates}, is_synced=1 WHERE server_id=?`,
                             [...Object.values(record).slice(1), record.id] as any
                         );
+                        pulled++;
                     }
                 }
             }
         });
-    } catch {
-        // Sin conexión — ignorar silenciosamente
+        return { pulled };
+    } catch (err) {
+        return { pulled: 0, error: String(err) };
     }
 }
