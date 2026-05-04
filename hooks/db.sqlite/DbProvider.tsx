@@ -18,21 +18,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { getDb } from './db-pool';
-import { startAutoSync, stopAutoSync, type SyncResult } from './sync';
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 interface DbContextValue {
     isReady: boolean;
-    pendingSync: number;           // cantidad de registros pendientes
-    lastSyncResult: SyncResult | null;
 }
 
-const DbContext = createContext<DbContextValue>({
-    isReady: false,
-    pendingSync: 0,
-    lastSyncResult: null,
-});
+const DbContext = createContext<DbContextValue>({ isReady: false });
 
 export function useDb(): DbContextValue {
     return useContext(DbContext);
@@ -47,36 +40,13 @@ interface DbProviderProps {
 export function DbProvider({ children }: DbProviderProps) {
     const [isReady, setIsReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
-    const [pendingSync, setPendingSync] = useState(0);
 
     useEffect(() => {
         let mounted = true;
-
-        (async () => {
-            try {
-                await getDb();
-                if (!mounted) return;
-                setIsReady(true);
-
-                // Iniciar sync automático al detectar conexión
-                startAutoSync((result) => {
-                    if (!mounted) return;
-                    setLastSyncResult(result);
-                    // Actualizar contador de pendientes después del sync
-                    import('./sync').then(({ getPendingCount }) =>
-                        getPendingCount().then(setPendingSync)
-                    );
-                });
-            } catch (e) {
-                if (mounted) setError(e instanceof Error ? e.message : 'Error inicializando DB');
-            }
-        })();
-
-        return () => {
-            mounted = false;
-            stopAutoSync();
-        };
+        getDb()
+            .then(() => { if (mounted) setIsReady(true); })
+            .catch(e => { if (mounted) setError(e instanceof Error ? e.message : 'Error inicializando DB'); });
+        return () => { mounted = false; };
     }, []);
 
     if (error) {
@@ -97,7 +67,7 @@ export function DbProvider({ children }: DbProviderProps) {
     }
 
     return (
-        <DbContext.Provider value={{ isReady, pendingSync, lastSyncResult }}>
+        <DbContext.Provider value={{ isReady }}>
             {children}
         </DbContext.Provider>
     );

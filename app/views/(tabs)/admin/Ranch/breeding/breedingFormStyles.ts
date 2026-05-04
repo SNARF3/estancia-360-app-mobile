@@ -1,4 +1,4 @@
-import { Platform, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 
 /**
@@ -17,7 +17,6 @@ export const breedingFormStyles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingTop: Platform.OS === 'ios' ? 60 : 20,
         paddingBottom: 15,
         paddingHorizontal: Spacing.lg,
     },
@@ -264,5 +263,33 @@ export const breedingFormStyles = StyleSheet.create({
         fontSize: 12,
         color: Colors.textSecondary,
         fontFamily: Typography.fontSecondary,
+    },
+    // Chip row (alias para módulos de Sanidad)
+    chipRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: Spacing.sm,
+    },
+    chip: {
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        borderRadius: BorderRadius.xxl,
+        backgroundColor: Colors.background,
+        borderWidth: 1.5,
+        borderColor: Colors.border,
+    },
+    chipSelected: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    chipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+        fontFamily: Typography.fontPrimary,
+    },
+    chipTextSelected: {
+        color: Colors.white,
     },
 });

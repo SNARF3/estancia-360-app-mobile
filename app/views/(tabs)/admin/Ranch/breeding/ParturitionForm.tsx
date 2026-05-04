@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -13,6 +13,8 @@ import {
     View,
 } from 'react-native';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
+import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import {
     BIRTH_TYPE_LABELS,
@@ -23,7 +25,9 @@ import { useParturition } from '../../../../../../hooks/breeding/use-Parturition
 import { breedingFormStyles as styles } from './breedingFormStyles';
 
 export default function ParturitionForm() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
+  const [isPickerVisible, setIsPickerVisible] = useState(false);
     const params = useLocalSearchParams<{ animalCode?: string }>();
     const {
         formData,
@@ -67,7 +71,7 @@ export default function ParturitionForm() {
     return (
         <View style={styles.mainContainer}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
@@ -107,14 +111,16 @@ export default function ParturitionForm() {
                     <Text style={styles.sectionTitle}>DATOS DE LA MADRE</Text>
                     <View style={styles.card}>
                         <Text style={styles.label}>CÓDIGO DE LA MADRE *</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Ej: GP-0012"
-                            value={formData.animalCode}
-                            onChangeText={(text) => updateField('animalCode', text)}
-                            placeholderTextColor={Colors.textDisabled}
-                            autoCapitalize="characters"
-                        />
+                        <TouchableOpacity
+                            style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                            onPress={() => setIsPickerVisible(true)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={{ fontSize: 16, color: formData.animalCode ? Colors.textPrimary : Colors.textDisabled }}>
+                                {formData.animalCode || 'Buscar animal...'}
+                            </Text>
+                            <Ionicons name="search" size={18} color={Colors.textDisabled} />
+                        </TouchableOpacity>
 
                         <DateSelector
                             label="FECHA DEL PARTO"
@@ -313,7 +319,13 @@ export default function ParturitionForm() {
                         }
                     </TouchableOpacity>
                 </ScrollView>
-            </KeyboardAvoidingView>
+            
+      <AnimalPickerModal
+          visible={isPickerVisible}
+          onClose={() => setIsPickerVisible(false)}
+          onSelect={(code) => updateField('animalCode', code)}
+      />
+</KeyboardAvoidingView>
         </View>
     );
 }

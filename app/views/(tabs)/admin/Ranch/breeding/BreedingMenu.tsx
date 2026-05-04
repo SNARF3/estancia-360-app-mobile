@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import {
     Alert,
-    Platform,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -11,9 +10,11 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 
 export default function BreedingMenu() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
 
     const handleBack = () => router.push('/views/(tabs)/admin/management/Management' as any);
@@ -26,7 +27,7 @@ export default function BreedingMenu() {
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                 <View style={styles.headerTop}>
                     <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                         <Ionicons name="arrow-back" size={28} color={Colors.primary} />
@@ -122,7 +123,6 @@ const styles = StyleSheet.create({
     mainContainer: { flex: 1, backgroundColor: Colors.background },
     header: {
         backgroundColor: Colors.background,
-        paddingTop: Platform.OS === 'ios' ? 60 : 20,
         paddingBottom: 10,
         paddingHorizontal: Spacing.lg,
     },

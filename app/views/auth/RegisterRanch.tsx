@@ -163,7 +163,7 @@ export default function RegisterRanchScreen() {
     useEffect(() => {
         if (!rawUserData) {
             Alert.alert('Error crítico', 'No se recibieron datos del usuario.');
-            router.back();
+            router.replace('/views/auth/Register' as any);
             return;
         }
         fetchCountries();
@@ -244,7 +244,7 @@ export default function RegisterRanchScreen() {
 
     return (
         <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/views/auth/Register' as any)}>
                 <Ionicons name="arrow-back" size={34} color={Colors.primary} />
             </TouchableOpacity>
 

@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Platform, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 
 import { HeaderText } from '../../../../../components/common/HeaderText';
@@ -11,6 +12,7 @@ import { useRanchData } from '../../../../../hooks/auth/use-RanchData';
 
 export default function QrWorkerGenerator() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const { ranch, loading, error } = useRanchData();
 
     const qrPayload = ranch ? JSON.stringify({
@@ -53,7 +55,7 @@ export default function QrWorkerGenerator() {
     return (
         <ScreenContainer scrollable={true}>
             {/* Header con botón de volver */}
-            <View style={styles.headerRow}>
+            <View style={[styles.headerRow, { marginTop: insets.top + 12 }]}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.textPrimary} />
                 </TouchableOpacity>
@@ -112,8 +114,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: Spacing.xl,
-        // CORRECCIÓN PRINCIPAL: Aumentamos mucho el margen superior
-        marginTop: Platform.OS === 'ios' ? 60 : 50,
     },
     backButton: {
         marginRight: Spacing.md,

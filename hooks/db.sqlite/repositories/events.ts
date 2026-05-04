@@ -295,7 +295,7 @@ export async function registerWeaning(input: CreateWeaningInput) {
 export interface CreateWeightRecordInput {
     id_user: string;
     id_ranch_animal: string;
-    id_lot: string;
+    id_lot?: string | null;
     event_date: string;
     weight: number;
     weight_type: 'scale' | 'estimated';
@@ -325,7 +325,7 @@ export async function registerWeightRecord(input: CreateWeightRecordInput) {
             `INSERT INTO weight_records
          (id, id_event, id_lot, weight, weight_type, body_condition, age_days, created_at, updated_at, is_synced, sync_action)
        VALUES (?,?,?,?,?,?,?,?,?,0,'INSERT')`,
-            [id, event.id, input.id_lot, input.weight, input.weight_type,
+            [id, event.id, input.id_lot ?? null, input.weight, input.weight_type,
                 input.body_condition ?? null, input.age_days ?? null, ts, ts]
         );
 
@@ -336,6 +336,136 @@ export async function registerWeightRecord(input: CreateWeightRecordInput) {
     });
 
     return { event_id, weight_id };
+}
+
+// ─── MÓDULO RECRÍA — Selección ───────────────────────────────────────────────
+
+export interface CreateRearingSelectionInput {
+    id_user: string;
+    id_ranch_animal: string;
+    event_date: string;
+    destination: 'replacement' | 'fattening' | 'sale';
+    id_lot_dest?: string;
+    weight_at_selection?: number;
+    body_condition?: number;
+    genetic_score?: number;
+    age_days?: number;
+    notes?: string;
+}
+
+export async function registerRearingSelection(input: CreateRearingSelectionInput) {
+    const db = await getDb();
+    let event_id = '';
+    let selection_id = '';
+
+    await db.withTransactionAsync(async () => {
+        const event = await createEvent({
+            id_user: input.id_user,
+            id_ranch_animal: input.id_ranch_animal,
+            id_event_type: EVENT_TYPES.SELECCION_RECRIA,
+            event_date: input.event_date,
+            notes: input.notes,
+        });
+
+        const id = newId();
+        const ts = now();
+        await db.runAsync(
+            `INSERT INTO rearing_selections
+         (id, id_event, id_lot_dest, destination, weight_at_selection, body_condition, genetic_score, age_days, notes, created_at, updated_at, is_synced, sync_action)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+            [id, event.id, input.id_lot_dest ?? null, input.destination,
+                input.weight_at_selection ?? null, input.body_condition ?? null,
+                input.genetic_score ?? null, input.age_days ?? null,
+                input.notes ?? null, ts, ts]
+        );
+
+        if (input.destination === 'fattening') {
+            await updateAnimalProductiveStatus(input.id_ranch_animal, PRODUCTIVE_STATUSES.ENGORDE, input.id_lot_dest);
+        }
+        if (input.weight_at_selection) {
+            await updateAnimalWeight(input.id_ranch_animal, input.weight_at_selection);
+        }
+
+        event_id = event.id;
+        selection_id = id;
+    });
+
+    return { event_id, selection_id };
+}
+
+// ─── MÓDULO ENGORDE — Ingreso ─────────────────────────────────────────────────
+
+export interface CreateFatteningEntryInput {
+    id_user: string;
+    id_ranch_animal: string;
+    id_lot_dest: string;
+    event_date: string;
+    system_type: 'field' | 'feedlot';
+    initial_weight?: number;
+    notes?: string;
+}
+
+export async function registerFatteningEntry(input: CreateFatteningEntryInput) {
+    const db = await getDb();
+    let event_id = '';
+    let entry_id = '';
+
+    await db.withTransactionAsync(async () => {
+        const event = await createEvent({
+            id_user: input.id_user,
+            id_ranch_animal: input.id_ranch_animal,
+            id_event_type: EVENT_TYPES.ENTRADA_ENGORDE,
+            event_date: input.event_date,
+            notes: input.notes,
+        });
+
+        const id = newId();
+        const ts = now();
+        await db.runAsync(
+            `INSERT INTO fattening_entries
+         (id, id_event, system_type, initial_weight, notes, created_at, updated_at, is_synced, sync_action)
+       VALUES (?,?,?,?,?,?,?,0,'INSERT')`,
+            [id, event.id, input.system_type, input.initial_weight ?? null, input.notes ?? null, ts, ts]
+        );
+
+        await updateAnimalProductiveStatus(input.id_ranch_animal, PRODUCTIVE_STATUSES.ENGORDE, input.id_lot_dest);
+        if (input.initial_weight) await updateAnimalWeight(input.id_ranch_animal, input.initial_weight);
+
+        event_id = event.id;
+        entry_id = id;
+    });
+
+    return { event_id, entry_id };
+}
+
+// ─── MÓDULO ENGORDE — Alimentación ───────────────────────────────────────────
+
+export interface CreateFeedRecordInput {
+    id_user: string;
+    id_lot: string;
+    feed_date: string;
+    feed_type: string;
+    quantity?: number;
+    unit?: string;
+    cost?: number;
+    notes?: string;
+}
+
+export async function registerFeedRecord(input: CreateFeedRecordInput) {
+    const db = await getDb();
+    const id = newId();
+    const ts = now();
+
+    await db.runAsync(
+        `INSERT INTO feed_records
+       (id, id_lot, id_user, feed_date, feed_type, quantity, unit, cost, notes, created_at, updated_at, is_synced, sync_action)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+        [id, input.id_lot, input.id_user, input.feed_date, input.feed_type,
+            input.quantity ?? null, input.unit ?? null, input.cost ?? null,
+            input.notes ?? null, ts, ts]
+    );
+
+    return { feed_id: id };
 }
 
 // ─── MÓDULO MOVIMIENTOS — Venta ───────────────────────────────────────────────
@@ -529,6 +659,51 @@ export async function registerHealthIncident(input: CreateHealthIncidentInput) {
 
     return { event_id, incident_id };
 }
+
+// ─── MÓDULO SANIDAD — Vacunación ─────────────────────────────────────────────
+
+export interface CreateVaccinationInput {
+    id_user: string;
+    id_ranch_animal: string;
+    event_date: string;
+    vaccine_name: string;
+    dose?: string;
+    responsible?: string;
+    notes?: string;
+}
+
+export async function registerVaccination(input: CreateVaccinationInput) {
+    const db = await getDb();
+
+    let event_id = '';
+    let vaccination_id = '';
+
+    await db.withTransactionAsync(async () => {
+        const event = await createEvent({
+            id_user: input.id_user,
+            id_ranch_animal: input.id_ranch_animal,
+            id_event_type: EVENT_TYPES.VACUNACION,
+            event_date: input.event_date,
+            notes: input.notes,
+        });
+
+        const id = newId();
+        const ts = now();
+        await db.runAsync(
+            `INSERT INTO vaccinations
+         (id, id_event, vaccine_name, dose, responsible, notes, created_at, updated_at, is_synced, sync_action)
+       VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
+            [id, event.id, input.vaccine_name, input.dose ?? null,
+                input.responsible ?? null, input.notes ?? null, ts, ts]
+        );
+
+        event_id = event.id;
+        vaccination_id = id;
+    });
+
+    return { event_id, vaccination_id };
+}
+
 
 // ─── Historial de eventos de un animal ───────────────────────────────────────
 

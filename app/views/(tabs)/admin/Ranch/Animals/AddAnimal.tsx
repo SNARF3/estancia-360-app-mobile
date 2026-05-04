@@ -15,6 +15,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { ScreenContainer } from '../../../../../../components/layout/ScreenContainer';
 import { constants } from '../../../../../../constants/constants';
@@ -24,6 +25,7 @@ import { AnimalBreed } from '../../../../../../hooks/Animals/offline/use-GetAnim
 import { Animal, useGetListAnimals } from '../../../../../../hooks/Animals/offline/use-GetListAnimals';
 
 export default function AddAnimalScreen() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
     // const { breeds, loading: loadingBreeds } = useGetAnimalsData();
     const [breeds] = useState<any[]>([]); // Placeholder for types
@@ -171,7 +173,7 @@ export default function AddAnimalScreen() {
     return (
         <View style={styles.mainContainer}>
             <ScreenContainer scrollable={false} style={styles.container}>
-                <View style={styles.header}>
+                <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                     <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                         <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                     </TouchableOpacity>
@@ -505,7 +507,6 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingTop: Platform.OS === 'ios' ? 60 : 20,
         paddingBottom: 15,
     },
     backButton: { padding: 5, marginRight: Spacing.sm },

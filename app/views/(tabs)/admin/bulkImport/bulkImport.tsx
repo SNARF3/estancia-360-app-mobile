@@ -4,9 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-    Alert, Platform, ScrollView, StatusBar,
+    Alert, ScrollView, StatusBar,
     StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 
 interface ImportOption {
@@ -38,13 +39,14 @@ const OPTIONS: ImportOption[] = [
 
 export default function BulkImportMenu() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [expanded, setExpanded] = React.useState<number | null>(null);
 
     return (
         <View style={s.root}>
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
-            <View style={s.header}>
-                <TouchableOpacity onPress={() => router.push('/views/(tabs)/admin/Ranch/breeding/BreedingMenu' as any)} style={s.backBtn}>
+            <View style={[s.header, { paddingTop: insets.top + 12 }]}>
+                <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management' as any)} style={s.backBtn}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={s.titleWrap}>
@@ -112,7 +114,7 @@ export default function BulkImportMenu() {
 
 const s = StyleSheet.create({
     root: { flex: 1, backgroundColor: Colors.background },
-    header: { flexDirection: 'row', alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 60 : 20, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, backgroundColor: Colors.background, gap: Spacing.md },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md, backgroundColor: Colors.background, gap: Spacing.md },
     backBtn: { padding: 4 },
     titleWrap: { flex: 1 },
     title: { ...Typography.h2, color: Colors.primary, fontWeight: '800', fontSize: 22 },

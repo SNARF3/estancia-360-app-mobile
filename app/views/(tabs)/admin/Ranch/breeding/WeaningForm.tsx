@@ -10,13 +10,17 @@ import {
 } from 'react-native';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { LotSelectorModal } from '../../../../../../components/common/LotSelectorModal';
+import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useWeaning } from '../../../../../../hooks/breeding/use-Weaning';
 import { type Lot } from '../../../../../../hooks/Ranch/use-Pastures';
 import { breedingFormStyles as styles } from './breedingFormStyles';
 
 export default function WeaningForm() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
+  const [isPickerVisible, setIsPickerVisible] = useState(false);
     const params = useLocalSearchParams<{ criaCode?: string }>();
     const { formData, updateField, saveWeaning, resetForm, loading, error, success } = useWeaning();
 
@@ -52,7 +56,7 @@ export default function WeaningForm() {
 
     return (
         <View style={styles.mainContainer}>
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
@@ -74,14 +78,16 @@ export default function WeaningForm() {
                     <Text style={styles.sectionTitle}>DATOS DE LA CRÍA</Text>
                     <View style={styles.card}>
                         <Text style={styles.label}>CÓDIGO DE LA CRÍA *</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Ej: CRIA-001"
-                            value={formData.criaCode}
-                            onChangeText={t => updateField('criaCode', t)}
-                            placeholderTextColor={Colors.textDisabled}
-                            autoCapitalize="characters"
-                        />
+                        <TouchableOpacity
+                            style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                            onPress={() => setIsPickerVisible(true)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={{ fontSize: 16, color: formData.criaCode ? Colors.textPrimary : Colors.textDisabled }}>
+                                {formData.criaCode || 'Buscar cría...'}
+                            </Text>
+                            <Ionicons name="search" size={18} color={Colors.textDisabled} />
+                        </TouchableOpacity>
 
                         <View style={styles.row}>
                             <View style={styles.halfWidth}>
@@ -166,7 +172,13 @@ export default function WeaningForm() {
                         {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.saveButtonText}>REGISTRAR DESTETE</Text>}
                     </TouchableOpacity>
                 </ScrollView>
-            </KeyboardAvoidingView>
+            
+      <AnimalPickerModal
+          visible={isPickerVisible}
+          onClose={() => setIsPickerVisible(false)}
+          onSelect={(code) => updateField('criaCode', code)}
+      />
+</KeyboardAvoidingView>
 
             {/* Selector de lotes */}
             <LotSelectorModal

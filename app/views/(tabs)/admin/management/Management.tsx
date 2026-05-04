@@ -23,27 +23,21 @@ export default function AdministracionScreen() {
 
   const menuItems = [
     {
-      icon: 'leaf',
-      label: 'Mi estancia',
-      route: '/views/(tabs)/admin/Ranch/breeding/BreedingMenu',
+      icon: 'paw',
+      label: 'Mis Animales',
+      route: '/views/(tabs)/admin/Ranch/Animals/AnimalMenu',
+      color: Colors.primary,
+    },
+    {
+      icon: 'document-text-outline',
+      label: 'Registros',
+      route: '/views/(tabs)/admin/Ranch/Registros/RegistrosMenu',
       color: Colors.primary,
     },
     {
       icon: 'grid-outline',
       label: 'Potreros',
       route: '/views/(tabs)/admin/Ranch/Pastures/PasturesMenu',
-      color: Colors.primary,
-    },
-    {
-      icon: 'stats-chart',
-      label: 'Reportes',
-      route: '/views/(tabs)/admin/management/QrWorkerGenerator',
-      color: Colors.primary,
-    },
-    {
-      icon: 'people',
-      label: 'Mi equipo',
-      route: '/views/(tabs)/admin/management/QrWorkerGenerator',
       color: Colors.primary,
     },
   ];
@@ -85,7 +79,7 @@ export default function AdministracionScreen() {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
+    paddingTop: 46,
     flex: 1,
     backgroundColor: Colors.background,
   },

@@ -108,6 +108,11 @@ export interface RawAnimalRow {
     weight_raw: any;
 }
 
+export interface UnresolvedLot {
+    name: string;
+    id: string | null;
+}
+
 export interface ValidatedAnimalRow {
     rowIndex: number;
     code: string;
@@ -126,9 +131,10 @@ export interface ValidatedAnimalRow {
 // ─── Hook de lectura/validación ───────────────────────────────────────────────
 
 export function useBulkImportAnimals() {
-    const [step, setStep] = useState<'idle' | 'reading' | 'preview' | 'loading' | 'done' | 'error'>('idle');
-    const [progress, setProgress] = useState(0);   // 0–100
+    const [step, setStep] = useState<'idle' | 'reading' | 'lot_check' | 'preview' | 'loading' | 'done' | 'error'>('idle');
+    const [progress, setProgress] = useState(0);
     const [rows, setRows] = useState<ValidatedAnimalRow[]>([]);
+    const [unresolvedLots, setUnresolvedLots] = useState<UnresolvedLot[]>([]);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [loadedCount, setLoadedCount] = useState(0);
     const [skippedCount, setSkippedCount] = useState(0);
@@ -214,6 +220,13 @@ export function useBulkImportAnimals() {
 
             setProgress(75);
 
+            // Extraer nombres de lote únicos no vacíos
+            const uniqueLotNames = [...new Set(
+                rawRows
+                    .map(r => r.lot_name_raw ? r.lot_name_raw.trim() : null)
+                    .filter(Boolean) as string[]
+            )];
+
             // Validar cada fila
             const validated: ValidatedAnimalRow[] = rawRows.map(raw => {
                 const errors: string[] = [];
@@ -259,7 +272,14 @@ export function useBulkImportAnimals() {
 
             setProgress(100);
             setRows(validated);
-            setStep('preview');
+
+            const notFound = uniqueLotNames.filter(name => !lotMap.has(name.toLowerCase()));
+            if (notFound.length > 0) {
+                setUnresolvedLots(notFound.map(name => ({ name, id: null })));
+                setStep('lot_check');
+            } else {
+                setStep('preview');
+            }
 
         } catch (e: any) {
             console.error('BulkImport parse error:', e);
@@ -268,7 +288,24 @@ export function useBulkImportAnimals() {
         }
     }, []);
 
-    // ── 2. Eliminar fila de la vista previa ───────────────────────────────────
+    // ── 2. Resolver lote ──────────────────────────────────────────────────────
+
+    const resolveLot = useCallback((name: string, id: string) => {
+        setUnresolvedLots(prev => prev.map(l => l.name === name ? { ...l, id } : l));
+        setRows(prev => prev.map(r => {
+            if (!r.lot_name || r.lot_name.toLowerCase() !== name.toLowerCase()) return r;
+            const errors = r.errors.filter(e => !e.toLowerCase().includes('lote'));
+            return { ...r, id_lot: id, errors, hasError: errors.length > 0 };
+        }));
+    }, []);
+
+    // ── 3. Confirmar lotes y avanzar a preview ────────────────────────────────
+
+    const finalizeLotCheck = useCallback(() => {
+        setStep('preview');
+    }, []);
+
+    // ── 4. Eliminar fila de la vista previa ───────────────────────────────────
 
     const removeRow = useCallback((rowIndex: number) => {
         setRows(prev => prev.filter(r => r.rowIndex !== rowIndex));
@@ -345,12 +382,13 @@ export function useBulkImportAnimals() {
         }
     }, [rows]);
 
-    // ── 4. Reset ──────────────────────────────────────────────────────────────
+    // ── 5. Reset ──────────────────────────────────────────────────────────────
 
     const reset = useCallback(() => {
         setStep('idle');
         setProgress(0);
         setRows([]);
+        setUnresolvedLots([]);
         setErrorMsg(null);
         setLoadedCount(0);
         setSkippedCount(0);
@@ -360,9 +398,9 @@ export function useBulkImportAnimals() {
     const invalidCount = rows.filter(r => r.hasError).length;
 
     return {
-        step, progress, rows, errorMsg,
+        step, progress, rows, unresolvedLots, errorMsg,
         loadedCount, skippedCount,
         validCount, invalidCount,
-        pickAndParse, removeRow, loadToDatabase, reset,
+        pickAndParse, resolveLot, finalizeLotCheck, removeRow, loadToDatabase, reset,
     };
 }
