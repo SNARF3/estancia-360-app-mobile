@@ -80,7 +80,7 @@ export default function QrWorkerGenerator() {
                             size={220}
                             color={Colors.black}
                             backgroundColor="white"
-                            logo={require('../../../../../assets/estancia360/logo.png')}
+                            logo={require('../../../../../assets/estancia360/icon-light.png')}
                             logoSize={40}
                             logoBackgroundColor='white'
                             logoMargin={2}
