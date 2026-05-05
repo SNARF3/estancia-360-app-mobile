@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-    Alert, FlatList,
+    Alert, BackHandler, FlatList,
     KeyboardAvoidingView,
     Modal, Platform, RefreshControl,
     ScrollView, StatusBar, StyleSheet, Text,
@@ -329,7 +329,14 @@ export default function PasturesScreen() {
     const [showLotModal, setShowLotModal] = useState(false);
     const [activePastureForLot, setActivePastureForLot] = useState<Pasture | null>(null);
 
-    useFocusEffect(useCallback(() => { fetchPastures(); }, []));
+    useFocusEffect(useCallback(() => {
+        fetchPastures();
+        const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+            router.replace('/views/(tabs)/admin/management/Management' as any);
+            return true;
+        });
+        return () => sub.remove();
+    }, []));
 
     const openAddLot = (pasture: Pasture) => {
         setActivePastureForLot(pasture);

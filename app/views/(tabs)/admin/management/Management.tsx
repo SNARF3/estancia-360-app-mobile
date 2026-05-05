@@ -31,7 +31,7 @@ export default function AdministracionScreen() {
     {
       icon: 'document-text-outline',
       label: 'Registros',
-      route: '/views/(tabs)/admin/Ranch/Registros/RegistrosMenu',
+      route: '/views/(tabs)/admin/Registros/RegistrosMenu',
       color: Colors.primary,
     },
     {
