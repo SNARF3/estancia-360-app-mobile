@@ -31,6 +31,12 @@ const OPTIONS: ImportOption[] = [
         columns: ['CÓDIGO ANIMAL', 'FECHA PESAJE (DD/MM/YYYY)', 'PESO (KG)', 'CONDICIÓN CORPORAL (1-5)', 'OBSERVACIONES'],
     },
     {
+        title: 'Vacunaciones', subtitle: 'Historial de vacunaciones del rodeo',
+        icon: 'shield-checkmark-outline', color: '#10B981',
+        route: '/views/(tabs)/admin/bulkImport/BulkImportVaccinations', available: true,
+        columns: ['CÓDIGO ANIMAL', 'FECHA (DD/MM/YYYY)', 'NOMBRE VACUNA', 'DOSIS (Opcional)', 'RESPONSABLE (Opcional)', 'OBSERVACIONES (Opcional)'],
+    },
+    {
         title: 'Gestaciones', subtitle: 'Importar diagnósticos de gestación',
         icon: 'analytics-outline', color: '#8B5CF6',
         route: null, available: false, columns: [],

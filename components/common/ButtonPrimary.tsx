@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
   },
   primaryButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryButton,
   },
   secondaryButton: {
     backgroundColor: Colors.secondary,

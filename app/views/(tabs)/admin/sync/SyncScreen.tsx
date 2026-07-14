@@ -1,111 +1,140 @@
+import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
   RefreshControl,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { showMessage } from 'react-native-flash-message';
-import { ScreenContainer } from '../../../../../components/layout/ScreenContainer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CowIcon } from '../../../../../components/icons/AppIcons';
+import { ConflictResolutionModal } from '../../../../../components/common/ConflictResolutionModal';
+import { DownloadLoadingOverlay } from '../../../../../components/common/DownloadLoadingOverlay';
 import { SyncLoadingOverlay } from '../../../../../components/common/SyncLoadingOverlay';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 import { getDb } from '../../../../../hooks/db.sqlite/db-pool';
-import { ALL_TABLES, pullFromServer, syncAll } from '../../../../../hooks/db.sqlite/sync';
+import {
+  ALL_TABLES,
+  applyConflictResolutions,
+  ConflictDecision,
+  ConflictItem,
+  downloadFromServer,
+  syncAll,
+} from '../../../../../hooks/db.sqlite/sync';
+import { logout } from '../../../../../hooks/auth/use-Auth';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
-interface TablePendingInfo {
+interface ModuleGroup {
+  key: string;
   label: string;
-  table: string;
   icon: string;
+  tables: string[];
   count: number;
+  syncable: boolean;
 }
 
 interface PendingRecord {
   id: string;
   primary: string;
   secondary?: string;
+  tableLabel?: string;
 }
 
-interface WeightSummary {
-  totalAnimals: number;
-  avgWeight: number;
-  maxWeight: number;
-  minWeight: number;
-  lastWeightDate: string | null;
-}
-
-const TABLE_LABELS: Record<string, { label: string; icon: string }> = {
-  ranch_pastures:          { label: 'Potreros',                icon: 'grid-outline' },
-  ranch_lots:              { label: 'Lotes',                   icon: 'albums-outline' },
-  ranch_animals:           { label: 'Animales',                icon: 'paw-outline' },
-  animal_declared_history: { label: 'Historial declarado',     icon: 'document-text-outline' },
-  breeding_services:       { label: 'Servicios reproductivos', icon: 'heart-outline' },
-  gestation_diagnoses:     { label: 'Diagnósticos',            icon: 'medical-outline' },
-  parturitions:            { label: 'Partos',                  icon: 'happy-outline' },
-  weanings:                { label: 'Destetes',                icon: 'git-branch-outline' },
-  weight_records:          { label: 'Pesajes',                 icon: 'scale-outline' },
-  rearing_selections:      { label: 'Selecciones recría',      icon: 'filter-outline' },
-  fattening_entries:       { label: 'Ingresos engorde',        icon: 'trending-up-outline' },
-  feed_records:            { label: 'Alimentación',            icon: 'leaf-outline' },
-  animal_purchases:        { label: 'Compras',                 icon: 'cart-outline' },
-  animal_sales:            { label: 'Ventas',                  icon: 'cash-outline' },
-  animal_transfers:        { label: 'Traslados',               icon: 'swap-horizontal-outline' },
-  animal_exits:            { label: 'Bajas',                   icon: 'close-circle-outline' },
-  vaccinations:            { label: 'Vacunaciones',            icon: 'shield-checkmark-outline' },
-  treatments:              { label: 'Tratamientos',            icon: 'bandage-outline' },
-  health_incidents:        { label: 'Incidentes sanitarios',   icon: 'warning-outline' },
-};
-
-const EVENT_TYPE_NAMES: Record<number, string> = {
-  1: 'Servicio reproductivo',
-  2: 'Diagnóstico gestación',
-  3: 'Parto',
-  4: 'Destete',
-  5: 'Pesaje',
-  6: 'Selección recría',
-  7: 'Compra',
-  8: 'Venta',
-  9: 'Traslado',
-  10: 'Salida',
-  11: 'Vacunación',
-  12: 'Tratamiento',
-  13: 'Incidente sanitario',
-  14: 'Entrada engorde',
-  15: 'Cambio de proceso',
-};
+// ─── Definición de módulos ────────────────────────────────────────────────────
 
 const SYNCABLE_SET = new Set(ALL_TABLES);
+
+const MODULE_DEFS: Omit<ModuleGroup, 'count' | 'syncable'>[] = [
+  {
+    key: 'animales',
+    label: 'Animales',
+    icon: 'paw-outline',
+    tables: ['ranch_animals', 'animal_declared_history', 'ranch_pastures', 'ranch_lots'],
+  },
+  {
+    key: 'reproduccion',
+    label: 'Reproducción',
+    icon: 'heart-outline',
+    tables: ['breeding_services', 'gestation_diagnoses', 'weanings'],
+  },
+  {
+    key: 'partos',
+    label: 'Partos',
+    icon: 'happy-outline',
+    tables: ['parturitions'],
+  },
+  {
+    key: 'pesajes',
+    label: 'Pesajes',
+    icon: 'scale-outline',
+    tables: ['weight_records', 'rearing_selections', 'fattening_entries', 'feed_records'],
+  },
+  {
+    key: 'sanidad',
+    label: 'Sanidad',
+    icon: 'shield-checkmark-outline',
+    tables: ['vaccinations', 'treatments', 'health_incidents'],
+  },
+  {
+    key: 'movimientos',
+    label: 'Movimientos',
+    icon: 'swap-horizontal-outline',
+    tables: ['animal_purchases', 'animal_sales', 'animal_transfers', 'animal_exits'],
+  },
+];
+
+const TABLE_LABELS: Record<string, string> = {
+  ranch_pastures:           'Potreros',
+  ranch_lots:               'Lotes',
+  ranch_animals:            'Animales',
+  animal_declared_history:  'Historial declarado',
+  breeding_services:        'Servicios reproductivos',
+  gestation_diagnoses:      'Diagnósticos gestación',
+  parturitions:             'Partos',
+  weanings:                 'Destetes',
+  weight_records:           'Pesajes',
+  rearing_selections:       'Selecciones recría',
+  fattening_entries:        'Ingresos engorde',
+  feed_records:             'Alimentación',
+  animal_purchases:         'Compras',
+  animal_sales:             'Ventas',
+  animal_transfers:         'Traslados',
+  animal_exits:             'Bajas',
+  vaccinations:             'Vacunaciones',
+  treatments:               'Tratamientos',
+  health_incidents:         'Incidentes sanitarios',
+};
 
 const EVENT_LINKED_TABLES = new Set([
   'breeding_services', 'gestation_diagnoses', 'parturitions', 'weanings',
   'weight_records', 'rearing_selections', 'vaccinations', 'treatments', 'health_incidents',
 ]);
 
-// ─── Helper: detalle de registros pendientes ──────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '';
   try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' });
+    return new Date(iso).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' });
   } catch { return iso ?? ''; }
 }
 
-async function loadDetailRecords(table: string): Promise<PendingRecord[]> {
+async function loadTableRecords(table: string): Promise<PendingRecord[]> {
   const db = await getDb();
+  const tableLabel = TABLE_LABELS[table] ?? table;
   try {
     if (EVENT_LINKED_TABLES.has(table)) {
-      const rows = await db.getAllAsync<{
-        id: string; event_date: string | null; code: string | null;
-      }>(
+      const rows = await db.getAllAsync<{ id: string; event_date: string | null; code: string | null }>(
         `SELECT t.id, ae.event_date, ra.code
          FROM ${table} t
          LEFT JOIN animal_events ae ON ae.id = t.id_event
@@ -117,9 +146,9 @@ async function loadDetailRecords(table: string): Promise<PendingRecord[]> {
         id: r.id,
         primary: r.code ?? 'Sin código',
         secondary: r.event_date ? fmtDate(r.event_date) : undefined,
+        tableLabel,
       }));
     }
-
     if (table === 'ranch_animals') {
       const rows = await db.getAllAsync<{ id: string; code: string; sex: string; birthdate: string }>(
         `SELECT id, code, sex, birthdate FROM ranch_animals WHERE is_synced = 0 ORDER BY created_at DESC`
@@ -128,50 +157,47 @@ async function loadDetailRecords(table: string): Promise<PendingRecord[]> {
         id: r.id,
         primary: r.code,
         secondary: `${r.sex === 'F' ? 'Hembra' : 'Macho'} — Nac. ${fmtDate(r.birthdate)}`,
+        tableLabel,
       }));
     }
-
     if (table === 'ranch_pastures' || table === 'ranch_lots') {
       const rows = await db.getAllAsync<{ id: string; name: string }>(
         `SELECT id, name FROM ${table} WHERE is_synced = 0 ORDER BY created_at DESC`
       );
-      return rows.map(r => ({ id: r.id, primary: r.name }));
+      return rows.map(r => ({ id: r.id, primary: r.name, tableLabel }));
     }
-
     if (table === 'animal_declared_history') {
       const rows = await db.getAllAsync<{ id: string; code: string | null }>(
         `SELECT adh.id, ra.code FROM animal_declared_history adh
          LEFT JOIN ranch_animals ra ON ra.id = adh.id_ranch_animal
          WHERE adh.is_synced = 0`
       );
-      return rows.map(r => ({ id: r.id, primary: r.code ?? 'Sin código' }));
+      return rows.map(r => ({ id: r.id, primary: r.code ?? 'Sin código', tableLabel }));
     }
-
-    // Fallback genérico
     const rows = await db.getAllAsync<{ id: string }>(`SELECT id FROM ${table} WHERE is_synced = 0`);
-    return rows.map(r => ({ id: r.id, primary: r.id.slice(0, 14) + '…' }));
-  } catch {
-    return [];
-  }
+    return rows.map(r => ({ id: r.id, primary: r.id.slice(0, 14) + '…', tableLabel }));
+  } catch { return []; }
 }
 
-// ─── Hook de datos ────────────────────────────────────────────────────────────
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 function useSyncData() {
-  const [pending, setPending] = useState<TablePendingInfo[]>([]);
-  const [pendingNoBackend, setPendingNoBackend] = useState<TablePendingInfo[]>([]);
+  const [modules, setModules] = useState<ModuleGroup[]>([]);
   const [totalPending, setTotalPending] = useState(0);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [weightSummary, setWeightSummary] = useState<WeightSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [syncPhase, setSyncPhase] = useState<string>('');
+  const [syncPhase, setSyncPhase] = useState('');
   const [syncProgress, setSyncProgress] = useState(0);
-  const [pulling, setPulling] = useState(false);
 
-  // Detail modal
-  const [detailTable, setDetailTable] = useState<string | null>(null);
-  const [detailLabel, setDetailLabel] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  const lastServerTimeRef = useRef<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadPhase, setDownloadPhase] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
+
+  const [detailModule, setDetailModule] = useState<ModuleGroup | null>(null);
   const [detailRecords, setDetailRecords] = useState<PendingRecord[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -179,66 +205,35 @@ function useSyncData() {
     setLoading(true);
     try {
       const db = await getDb();
-      const tables = Object.keys(TABLE_LABELS);
-      const syncableList: TablePendingInfo[] = [];
-      const noBackendList: TablePendingInfo[] = [];
       let total = 0;
+      const resolved: ModuleGroup[] = [];
 
-      for (const table of tables) {
-        try {
-          const row = await db.getFirstAsync<{ count: number }>(
-            `SELECT COUNT(*) as count FROM ${table} WHERE is_synced = 0`
-          );
-          const count = row?.count ?? 0;
-          if (count > 0) {
-            const info: TablePendingInfo = {
-              table,
-              label: TABLE_LABELS[table].label,
-              icon: TABLE_LABELS[table].icon,
-              count,
-            };
+      for (const def of MODULE_DEFS) {
+        let count = 0;
+        let anyHasBackend = false;
+        for (const table of def.tables) {
+          try {
+            const row = await db.getFirstAsync<{ count: number }>(
+              `SELECT COUNT(*) as count FROM ${table} WHERE is_synced = 0`
+            );
+            const c = row?.count ?? 0;
+            count += c;
             if (SYNCABLE_SET.has(table)) {
-              syncableList.push(info);
-              total += count;
-            } else {
-              noBackendList.push(info);
+              anyHasBackend = true;
+              total += c;
             }
-          }
-        } catch { /* tabla puede no existir */ }
+          } catch { /* tabla puede no existir aún */ }
+        }
+        resolved.push({ ...def, count, syncable: anyHasBackend });
       }
 
-      setPending(syncableList);
-      setPendingNoBackend(noBackendList);
+      setModules(resolved);
       setTotalPending(total);
 
       const session = await db.getFirstAsync<{ last_sync: string | null }>(
         'SELECT last_sync FROM local_session WHERE id = 1'
       );
       setLastSync(session?.last_sync ?? null);
-
-      const wRow = await db.getFirstAsync<{
-        total: number; avg_w: number; max_w: number; min_w: number; last_date: string | null;
-      }>(
-        `SELECT
-          COUNT(DISTINCT a.id)         AS total,
-          ROUND(AVG(a.weight), 1)      AS avg_w,
-          MAX(a.weight)                AS max_w,
-          MIN(a.weight)                AS min_w,
-          MAX(wr.created_at)           AS last_date
-        FROM ranch_animals a
-        LEFT JOIN weight_records wr ON wr.id_event IN (
-          SELECT id FROM animal_events WHERE id_ranch_animal = a.id
-        )
-        WHERE a.id_productive_status IN (2,3)
-          AND a.id_status = 1`
-      );
-      setWeightSummary(wRow && wRow.total > 0 ? {
-        totalAnimals: wRow.total,
-        avgWeight: wRow.avg_w ?? 0,
-        maxWeight: wRow.max_w ?? 0,
-        minWeight: wRow.min_w ?? 0,
-        lastWeightDate: wRow.last_date,
-      } : null);
     } catch (e) {
       console.error('Error loading sync data:', e);
     } finally {
@@ -272,38 +267,44 @@ function useSyncData() {
     }
   };
 
-  const openDetail = async (item: TablePendingInfo) => {
-    setDetailLabel(item.label);
-    setDetailTable(item.table);
+  const openModuleDetail = async (mod: ModuleGroup) => {
+    setDetailModule(mod);
     setDetailRecords([]);
     setDetailLoading(true);
-    const records = await loadDetailRecords(item.table);
-    setDetailRecords(records);
+    const all: PendingRecord[] = [];
+    for (const table of mod.tables) {
+      const records = await loadTableRecords(table);
+      all.push(...records);
+    }
+    setDetailRecords(all);
     setDetailLoading(false);
   };
 
   const closeDetail = () => {
-    setDetailTable(null);
+    setDetailModule(null);
     setDetailRecords([]);
   };
 
-  const runPull = async (fullSync = false) => {
+  const runDownload = async (fullSync: boolean) => {
     if (fullSync) {
       Alert.alert(
         'Descarga completa',
         'Esto descargará todos los datos del servidor. Útil si cambiaste de celular. ¿Continuar?',
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Descargar todo', onPress: () => executePull(true) },
+          { text: 'Descargar todo', onPress: () => executeDownload(true) },
         ]
       );
     } else {
-      await executePull(false);
+      await executeDownload(false);
     }
   };
 
-  const executePull = async (fullSync: boolean) => {
-    setPulling(true);
+  const executeDownload = async (fullSync: boolean) => {
+    abortRef.current = new AbortController();
+    setDownloading(true);
+    setDownloadPhase('Iniciando descarga...');
+    setDownloadProgress(0);
     try {
       const db = await getDb();
       const session = await db.getFirstAsync<{ id_ranch: string }>(
@@ -313,13 +314,26 @@ function useSyncData() {
         showMessage({ message: 'Sin sesión activa', type: 'danger', floating: true });
         return;
       }
-      const result = await pullFromServer(session.id_ranch, { fullSync });
-      if (result.error) {
+      const result = await downloadFromServer(session.id_ranch, {
+        fullSync,
+        signal: abortRef.current.signal,
+        onProgress: (msg, pct) => {
+          setDownloadPhase(msg);
+          setDownloadProgress(pct);
+        },
+      });
+      if (result.cancelled) {
+        showMessage({ message: 'Descarga cancelada', type: 'info', floating: true });
+      } else if (result.error) {
         showMessage({ message: 'Error al descargar', description: result.error, type: 'danger', floating: true });
+      } else if (result.conflicts.length > 0) {
+        lastServerTimeRef.current = result.serverTime ?? null;
+        setConflicts(result.conflicts);
       } else {
+        const desc = result.deleted > 0 ? `${result.deleted} eliminado(s) del servidor` : undefined;
         showMessage({
           message: result.pulled > 0 ? `${result.pulled} registro(s) descargados` : 'Sin cambios nuevos',
-          description: fullSync ? 'Descarga completa finalizada' : 'Datos actualizados desde el servidor',
+          description: desc,
           type: 'success',
           floating: true,
         });
@@ -328,27 +342,62 @@ function useSyncData() {
     } catch {
       showMessage({ message: 'Sin conexión', description: 'No se pudo contactar el servidor.', type: 'danger', floating: true });
     } finally {
-      setPulling(false);
+      setDownloading(false);
+      setDownloadPhase('');
+      setDownloadProgress(0);
     }
   };
 
+  const cancelDownload = () => { abortRef.current?.abort(); };
+
+  const handleConflictResolve = async (decisions: ConflictDecision[]) => {
+    try {
+      await applyConflictResolutions(decisions, lastServerTimeRef.current ?? undefined);
+      setConflicts([]);
+      lastServerTimeRef.current = null;
+      showMessage({ message: 'Conflictos resueltos', type: 'success', floating: true });
+      await load();
+    } catch {
+      showMessage({ message: 'Error al aplicar resoluciones', type: 'danger', floating: true });
+    }
+  };
+
+  const clearConflicts = () => {
+    setConflicts([]);
+    lastServerTimeRef.current = null;
+  };
+
   return {
-    pending, pendingNoBackend, totalPending, lastSync, weightSummary,
-    loading, syncing, syncPhase, syncProgress, pulling,
-    detailTable, detailLabel, detailRecords, detailLoading,
-    load, runSync, openDetail, closeDetail, runPull,
+    modules, totalPending, lastSync,
+    loading, syncing, syncPhase, syncProgress,
+    downloading, downloadPhase, downloadProgress, conflicts,
+    detailModule, detailRecords, detailLoading,
+    load, runSync, openModuleDetail, closeDetail,
+    runDownload, cancelDownload, handleConflictResolve, clearConflicts,
   };
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function SyncScreen() {
+  const insets = useSafeAreaInsets();
   const {
-    pending, pendingNoBackend, totalPending, lastSync, weightSummary,
-    loading, syncing, syncPhase, syncProgress, pulling,
-    detailTable, detailLabel, detailRecords, detailLoading,
-    load, runSync, openDetail, closeDetail, runPull,
+    modules, totalPending, lastSync,
+    loading, syncing, syncPhase, syncProgress,
+    downloading, downloadPhase, downloadProgress, conflicts,
+    detailModule, detailRecords, detailLoading,
+    load, runSync, openModuleDetail, closeDetail,
+    runDownload, cancelDownload, handleConflictResolve, clearConflicts,
   } = useSyncData();
+
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    const unsub = NetInfo.addEventListener(state => {
+      setIsOnline(state.isConnected ?? true);
+    });
+    return unsub;
+  }, []);
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
@@ -359,16 +408,50 @@ export default function SyncScreen() {
       ' ' + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   };
 
-  return (
-    <ScreenContainer scrollable={false} style={styles.container}>
-      <SyncLoadingOverlay visible={syncing} phase={syncPhase} progress={syncProgress} />
+  const handleLogout = () => {
+    Alert.alert('Cerrar sesión', '¿Estás seguro que deseas salir?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Salir',
+        style: 'destructive',
+        onPress: async () => {
+          await logout();
+          router.replace('/views/auth/Inicio');
+        },
+      },
+    ]);
+  };
 
-      {/* Modal de detalle de registros pendientes */}
-      <Modal visible={detailTable !== null} transparent animationType="slide" onRequestClose={closeDetail}>
+  const activeModules = modules.filter(m => m.count > 0);
+  const busy = syncing || loading || downloading;
+
+  return (
+    <View style={styles.root}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+      <SyncLoadingOverlay visible={syncing} phase={syncPhase} progress={syncProgress} />
+      <DownloadLoadingOverlay
+        visible={downloading}
+        phase={downloadPhase}
+        progress={downloadProgress}
+        onCancel={cancelDownload}
+      />
+      <ConflictResolutionModal
+        conflicts={conflicts}
+        onResolve={handleConflictResolve}
+        onCancel={clearConflicts}
+      />
+
+      {/* Modal detalle de módulo */}
+      <Modal
+        visible={detailModule !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeDetail}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{detailLabel}</Text>
+              <Text style={styles.modalTitle}>{detailModule?.label}</Text>
               <TouchableOpacity onPress={closeDetail} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color={Colors.textPrimary} />
               </TouchableOpacity>
@@ -382,11 +465,15 @@ export default function SyncScreen() {
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} style={styles.modalList}>
                 {detailRecords.map((r, i) => (
-                  <View key={r.id} style={[styles.detailRow, i === detailRecords.length - 1 && { borderBottomWidth: 0 }]}>
+                  <View
+                    key={r.id + i}
+                    style={[styles.detailRow, i === detailRecords.length - 1 && { borderBottomWidth: 0 }]}
+                  >
                     <View style={styles.detailDot} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.detailPrimary}>{r.primary}</Text>
                       {r.secondary ? <Text style={styles.detailSecondary}>{r.secondary}</Text> : null}
+                      {r.tableLabel ? <Text style={styles.detailTableLabel}>{r.tableLabel}</Text> : null}
                     </View>
                   </View>
                 ))}
@@ -397,198 +484,301 @@ export default function SyncScreen() {
         </View>
       </Modal>
 
+      {/* Header — idéntico a Management y Perfil */}
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <View style={[styles.statusBadge, isOnline ? styles.onlineBadge : styles.offlineBadge]}>
+          <Text style={[styles.statusText, isOnline ? styles.onlineText : styles.offlineText]}>
+            {isOnline ? 'Online' : 'Offline'}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.salirBtn} onPress={handleLogout} activeOpacity={0.75}>
+          <Text style={styles.salirText}>Salir</Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={Colors.primary} />}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Sincronización</Text>
-          <Text style={styles.subtitle}>Último sync: {formatDate(lastSync)}</Text>
+        {/* Ícono sync + título */}
+        <View style={styles.syncHeader}>
+          <View style={styles.syncIconWrap}>
+            <Ionicons name="sync-outline" size={52} color={Colors.primary} />
+          </View>
+          <Text style={styles.title}>Sincronizar Datos</Text>
+          <Text style={styles.subtitle}>Última sincronización: {formatDate(lastSync)}</Text>
         </View>
 
-        {/* Subir cambios */}
+        {/* Card total de pendientes */}
+        <View style={styles.pendingCard}>
+          <View>
+            <Text style={styles.pendingCardLabel}>Registros pendientes</Text>
+            <Text style={styles.pendingCardCount}>{totalPending}</Text>
+          </View>
+          <View style={styles.pendingCardIconWrap}>
+            <CowIcon size={44} color={Colors.secondary} />
+          </View>
+        </View>
+
+        {/* Detalle por módulo */}
+        {activeModules.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Detalle</Text>
+            <View style={styles.moduleList}>
+              {activeModules.map(mod => (
+                <TouchableOpacity
+                  key={mod.key}
+                  style={styles.moduleRow}
+                  onPress={() => openModuleDetail(mod)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.moduleIconBg}>
+                    <Ionicons name={mod.icon as any} size={22} color={Colors.primary} />
+                  </View>
+                  <View style={styles.moduleInfo}>
+                    <Text style={styles.moduleLabel}>{mod.label}</Text>
+                    <Text style={styles.moduleSubtext}>{mod.count} registros sin subir</Text>
+                  </View>
+                  <View style={[styles.moduleBadge, !mod.syncable && styles.moduleBadgeGray]}>
+                    <Text style={[styles.moduleBadgeText, !mod.syncable && styles.moduleBadgeTextGray]}>
+                      {mod.count}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.textDisabled} style={{ marginLeft: 4 }} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* Recibir datos del servidor */}
+        <View style={styles.downloadCard}>
+          <View style={styles.downloadCardHeader}>
+            <Ionicons name="cloud-download-outline" size={16} color={Colors.textSecondary} />
+            <Text style={styles.downloadCardTitle}>Recibir datos del servidor</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.downloadBtn, busy && styles.disabledOpacity]}
+            disabled={busy}
+            onPress={() => runDownload(false)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="refresh-outline" size={16} color={Colors.white} />
+            <Text style={styles.downloadBtnText}>Descargar novedades</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.downloadBtnSecondary, busy && styles.disabledOpacity]}
+            disabled={busy}
+            onPress={() => runDownload(true)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="phone-portrait-outline" size={14} color={Colors.primary} />
+            <Text style={styles.downloadBtnSecondaryText}>Cambio de celular (descarga completa)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Botón principal */}
         <TouchableOpacity
-          style={[styles.syncButton, (syncing || pulling) && styles.syncButtonDisabled]}
+          style={[styles.syncButton, busy && styles.disabledOpacity]}
           onPress={runSync}
-          disabled={syncing || pulling || loading}
+          disabled={busy}
           activeOpacity={0.85}
         >
-          <Ionicons name="cloud-upload-outline" size={22} color={Colors.white} />
-          <Text style={styles.syncButtonText}>Subir cambios al servidor</Text>
+          <Ionicons name="sync-outline" size={22} color={Colors.white} />
+          <Text style={styles.syncButtonText}>Sincronizar ahora</Text>
         </TouchableOpacity>
-
-        {/* Descargar cambios — próximamente */}
-        <View style={[styles.downloadCard, { opacity: 0.5 }]}>
-          <View style={styles.downloadCardHeader}>
-            <Ionicons name="cloud-download-outline" size={18} color={Colors.textSecondary} />
-            <Text style={styles.downloadCardTitle}>Recibir datos del servidor</Text>
-            <View style={styles.proximamenteBadge}>
-              <Text style={styles.proximamenteText}>PRÓXIMAMENTE</Text>
-            </View>
-          </View>
-          <TouchableOpacity
-            style={[styles.downloadButton, styles.syncButtonDisabled]}
-            disabled
-            activeOpacity={1}
-          >
-            <Ionicons name="refresh-outline" size={18} color={Colors.white} />
-            <Text style={styles.downloadButtonText}>Descargar novedades</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.downloadButtonSecondary, styles.syncButtonDisabled]}
-            disabled
-            activeOpacity={1}
-          >
-            <Ionicons name="phone-portrait-outline" size={16} color={Colors.primary} />
-            <Text style={styles.downloadButtonSecondaryText}>Cambio de celular (descarga completa)</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Estado general */}
-        <View style={styles.statusCard}>
-          <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: totalPending > 0 ? Colors.warning : Colors.success }]} />
-            <Text style={styles.statusText}>
-              {totalPending > 0
-                ? `${totalPending} registro(s) pendientes de subir`
-                : 'Todo sincronizado'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Pendientes por tabla (sincronizables) — tappable */}
-        {pending.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Pendientes por módulo</Text>
-            {pending.map((item) => (
-              <TouchableOpacity
-                key={item.table}
-                style={styles.pendingRow}
-                onPress={() => openDetail(item)}
-                activeOpacity={0.75}
-              >
-                <View style={styles.pendingIcon}>
-                  <Ionicons name={item.icon as any} size={18} color={Colors.primary} />
-                </View>
-                <Text style={styles.pendingLabel}>{item.label}</Text>
-                <View style={styles.pendingBadge}>
-                  <Text style={styles.pendingCount}>{item.count}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={Colors.textSecondary} style={{ marginLeft: 4 }} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Pendientes sin backend aún */}
-        {pendingNoBackend.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Guardados localmente (sin backend aún)</Text>
-            {pendingNoBackend.map((item) => (
-              <View key={item.table} style={[styles.pendingRow, { opacity: 0.6 }]}>
-                <View style={[styles.pendingIcon, { backgroundColor: Colors.textSecondary + '20' }]}>
-                  <Ionicons name={item.icon as any} size={18} color={Colors.textSecondary} />
-                </View>
-                <Text style={[styles.pendingLabel, { color: Colors.textSecondary }]}>{item.label}</Text>
-                <View style={[styles.pendingBadge, { backgroundColor: Colors.textSecondary }]}>
-                  <Text style={styles.pendingCount}>{item.count}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Resumen de Pesos */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Resumen de Pesos</Text>
-          {weightSummary ? (
-            <View style={styles.weightGrid}>
-              <WeightStat label="Animales en recría/engorde" value={`${weightSummary.totalAnimals}`} icon="paw" />
-              <WeightStat label="Peso promedio" value={`${weightSummary.avgWeight} kg`} icon="stats-chart" />
-              <WeightStat label="Peso máximo" value={`${weightSummary.maxWeight} kg`} icon="trending-up" />
-              <WeightStat label="Peso mínimo" value={`${weightSummary.minWeight} kg`} icon="trending-down" />
-            </View>
-          ) : (
-            <View style={styles.emptyWeights}>
-              <Ionicons name="scale-outline" size={36} color={Colors.textDisabled} />
-              <Text style={styles.emptyText}>Sin pesajes registrados en recría/engorde</Text>
-            </View>
-          )}
-        </View>
 
         <View style={{ height: Spacing.tabBarHeight + 20 }} />
       </ScrollView>
-    </ScreenContainer>
-  );
-}
-
-function WeightStat({ label, value, icon }: { label: string; value: string; icon: string }) {
-  return (
-    <View style={styles.weightStat}>
-      <View style={styles.weightStatIcon}>
-        <Ionicons name={icon as any} size={20} color={Colors.primary} />
-      </View>
-      <Text style={styles.weightStatValue}>{value}</Text>
-      <Text style={styles.weightStatLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: 60,
+  root: {
     flex: 1,
     backgroundColor: Colors.background,
   },
+
+  // ── Header — mismo que Management y Perfil ───────────────────────────────────
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+  },
+  statusBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.xxl,
+    borderWidth: 1.5,
+  },
+  onlineBadge: { borderColor: Colors.primary, backgroundColor: Colors.successLight },
+  offlineBadge: { borderColor: Colors.textSecondary, backgroundColor: 'transparent' },
+  statusText: { fontSize: 13, fontFamily: Typography.fontPrimary, fontWeight: '700' },
+  onlineText: { color: Colors.primary },
+  offlineText: { color: Colors.textSecondary },
+  salirBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.xxl,
+    borderWidth: 1.5,
+    borderColor: Colors.textSecondary,
+  },
+  salirText: {
+    fontSize: 13,
+    fontFamily: Typography.fontPrimary,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+
+  scrollContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+  },
+
+  // ── Sync header ───────────────────────────────────────────────────────────────
+  syncHeader: {
+    alignItems: 'center',
     marginBottom: Spacing.xl,
-    marginTop: Spacing.sm,
+  },
+  syncIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+    ...Shadows.card,
   },
   title: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 28,
-    fontWeight: '700',
+    fontFamily: Typography.fontSecondary,
+    fontSize: 24,
+    fontWeight: '500',
     color: Colors.textPrimary,
+    marginBottom: 4,
   },
   subtitle: {
     fontFamily: Typography.fontSecondary,
-    fontSize: 13,
+    fontSize: 16,
     color: Colors.textSecondary,
-    marginTop: 4,
+    textAlign: 'center',
   },
-  syncButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xl,
+
+  // ── Pending card ──────────────────────────────────────────────────────────────
+  pendingCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 24,
+    padding: Spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xl,
+    ...Shadows.card,
+  },
+  pendingCardLabel: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  pendingCardCount: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 30,
+    color: Colors.primary + '99',
+    lineHeight: 37,
+  },
+  pendingCardIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: Colors.iconBg,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.md,
-    gap: Spacing.sm,
+  },
+
+  // ── Module list ───────────────────────────────────────────────────────────────
+  sectionTitle: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 14,
+    fontWeight: '500',
+    color: Colors.textSecondary,
     marginBottom: Spacing.md,
-    ...Shadows.floatingButton,
+    marginLeft: Spacing.xs,
   },
-  syncButtonDisabled: {
-    opacity: 0.7,
+  moduleList: {
+    gap: 12,
+    marginBottom: Spacing.xl,
   },
-  syncButtonText: {
-    fontFamily: Typography.fontPrimary,
+  moduleRow: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    ...Shadows.tabBar,
+  },
+  moduleIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: Colors.iconBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  moduleInfo: {
+    flex: 1,
+  },
+  moduleLabel: {
+    fontFamily: Typography.fontSecondary,
     fontSize: 16,
-    fontWeight: '700',
-    color: Colors.white,
+    color: Colors.textPrimary,
+    marginBottom: 2,
   },
+  moduleSubtext: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 12,
+    color: Colors.textDisabled,
+  },
+  moduleBadge: {
+    backgroundColor: Colors.badgeBg,
+    borderRadius: 999,
+    minWidth: 32,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    flexShrink: 0,
+  },
+  moduleBadgeGray: {
+    backgroundColor: Colors.textDisabled + '20',
+  },
+  moduleBadgeText: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 14,
+    color: Colors.badgeText,
+  },
+  moduleBadgeTextGray: {
+    color: Colors.textDisabled,
+  },
+
+  // ── Download card ─────────────────────────────────────────────────────────────
   downloadCard: {
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     ...Shadows.tabBar,
   },
   downloadCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: 6,
     marginBottom: Spacing.md,
   },
   downloadCardTitle: {
@@ -597,22 +787,9 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontWeight: '600',
   },
-  proximamenteBadge: {
-    marginLeft: 'auto',
-    backgroundColor: Colors.textDisabled + '30',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  proximamenteText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: Colors.textDisabled,
-    letterSpacing: 0.5,
-  },
-  downloadButton: {
-    backgroundColor: Colors.secondary,
-    borderRadius: BorderRadius.lg,
+  downloadBtn: {
+    backgroundColor: Colors.primaryButton,
+    borderRadius: BorderRadius.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -620,15 +797,15 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: Spacing.sm,
   },
-  downloadButtonText: {
+  downloadBtnText: {
     fontFamily: Typography.fontPrimary,
     fontSize: 14,
     fontWeight: '700',
     color: Colors.white,
   },
-  downloadButtonSecondary: {
+  downloadBtnSecondary: {
     backgroundColor: Colors.primary + '12',
-    borderRadius: BorderRadius.lg,
+    borderRadius: BorderRadius.md,
     borderWidth: 1.5,
     borderColor: Colors.primary + '40',
     flexDirection: 'row',
@@ -637,134 +814,39 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     gap: 6,
   },
-  downloadButtonSecondaryText: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  statusCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.lg,
-    ...Shadows.tabBar,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  statusText: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 14,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  section: {
-    marginBottom: Spacing.xl,
-  },
-  sectionTitle: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: Spacing.md,
-  },
-  pendingRow: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-    ...Shadows.tabBar,
-  },
-  pendingIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.primary + '15',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  pendingLabel: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 14,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  pendingBadge: {
-    backgroundColor: Colors.secondary,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  pendingCount: {
+  downloadBtnSecondaryText: {
     fontFamily: Typography.fontPrimary,
     fontSize: 13,
     fontWeight: '700',
-    color: Colors.white,
+    color: Colors.primary,
   },
-  weightGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.md,
-  },
-  weightStat: {
-    backgroundColor: Colors.white,
+
+  // ── Sync button ───────────────────────────────────────────────────────────────
+  syncButton: {
+    backgroundColor: Colors.primaryButton,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    alignItems: 'center',
-    width: '47%',
-    ...Shadows.tabBar,
-  },
-  weightStatIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary + '15',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.sm,
+    paddingVertical: 18,
+    gap: 12,
+    marginBottom: Spacing.md,
+    ...Shadows.floatingButton,
   },
-  weightStatValue: {
-    fontFamily: Typography.fontPrimary,
+  syncButtonText: {
+    fontFamily: Typography.fontSecondary,
     fontSize: 18,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 2,
+    fontWeight: '500',
+    color: Colors.white,
   },
-  weightStatLabel: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textAlign: 'center',
+  disabledOpacity: {
+    opacity: 0.65,
   },
-  emptyWeights: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    gap: Spacing.sm,
-    ...Shadows.tabBar,
-  },
-  emptyText: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  // Modal de detalle
+
+  // ── Modal ─────────────────────────────────────────────────────────────────────
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalSheet: {
@@ -806,10 +888,10 @@ const styles = StyleSheet.create({
   },
   detailRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border ?? '#E5E7EB',
+    borderBottomColor: Colors.border,
     gap: Spacing.sm,
   },
   detailDot: {
@@ -818,6 +900,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: Colors.warning,
     flexShrink: 0,
+    marginTop: 6,
   },
   detailPrimary: {
     fontFamily: Typography.fontSecondary,
@@ -830,5 +913,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
+  },
+  detailTableLabel: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 11,
+    color: Colors.textDisabled,
+    marginTop: 1,
+    fontStyle: 'italic',
   },
 });

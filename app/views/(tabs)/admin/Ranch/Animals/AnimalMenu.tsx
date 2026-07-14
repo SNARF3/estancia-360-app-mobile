@@ -36,6 +36,10 @@ const ANIMAL_ACTIONS: {
     { label: 'Diagnóstico Gestación',  icon: 'analytics',        route: '/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm',   paramKey: 'animalCode' },
     { label: 'Registrar Parto',        icon: 'fitness',          route: '/views/(tabs)/admin/Ranch/breeding/ParturitionForm',          paramKey: 'animalCode' },
     { label: 'Registrar Destete',      icon: 'git-branch',       route: '/views/(tabs)/admin/Ranch/breeding/WeaningForm',              paramKey: 'criaCode'   },
+    { label: 'Trasladar',              icon: 'swap-horizontal',  route: '/views/(tabs)/admin/Ranch/movements/TransferForm',            paramKey: 'animalCode' },
+    { label: 'Registrar Venta',        icon: 'cash-outline',     route: '/views/(tabs)/admin/Ranch/movements/SaleForm',               paramKey: 'animalCode' },
+    { label: 'Registrar Compra',       icon: 'cart-outline',     route: '/views/(tabs)/admin/Ranch/movements/PurchaseForm',           paramKey: 'animalCode' },
+    { label: 'Registrar Baja',         icon: 'close-circle-outline', route: '/views/(tabs)/admin/Ranch/movements/AnimalExitForm',     paramKey: 'animalCode' },
 ];
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -303,7 +307,7 @@ const styles = StyleSheet.create({
     catText: { fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
     dotsBtn: { padding: 4 },
 
-    fab: { position: 'absolute', bottom: 30, left: Spacing.lg, right: Spacing.lg, backgroundColor: Colors.primary, height: 60, borderRadius: BorderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', ...Shadows.floatingButton, zIndex: 20 },
+    fab: { position: 'absolute', bottom: 30, left: Spacing.lg, right: Spacing.lg, backgroundColor: Colors.primaryButton, height: 60, borderRadius: BorderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', ...Shadows.floatingButton, zIndex: 20 },
     fabTxt: { color: Colors.white, fontSize: 18, fontWeight: '800', marginLeft: 10 },
 
     empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.xl * 2, gap: Spacing.md },

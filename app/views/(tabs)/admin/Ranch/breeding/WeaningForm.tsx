@@ -21,7 +21,7 @@ export default function WeaningForm() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
   const [isPickerVisible, setIsPickerVisible] = useState(false);
-    const params = useLocalSearchParams<{ criaCode?: string }>();
+    const params = useLocalSearchParams<{ criaCode?: string; from?: string }>();
     const { formData, updateField, saveWeaning, resetForm, loading, error, success } = useWeaning();
 
     const [showLotSelector, setShowLotSelector] = useState(false);
@@ -31,12 +31,17 @@ export default function WeaningForm() {
         if (params.criaCode) updateField('criaCode', params.criaCode);
     }, [params.criaCode]);
 
+    const handleBack = () => {
+        if (params.from === 'registros') {
+            router.replace('/views/(tabs)/admin/Registros/RegistrosMenu' as any);
+        } else {
+            router.back();
+        }
+    };
+
     const handleLotSelect = (lot: Lot) => {
-        // El hook useWeaning espera el nombre del lote para buscarlo en SQLite
-        // Pero ahora tenemos el ID directo → podemos guardar el id directamente
-        // Actualizamos ambos: el nombre (para mostrar) y el ID (para guardar)
         updateField('lotDestName', lot.name);
-        updateField('lotDestId', lot.id);   // campo nuevo que agregaremos al hook
+        updateField('lotDestId', lot.id);
         setSelectedLotName(`${lot.name} · ${lot.lot_type}`);
     };
 
@@ -48,7 +53,7 @@ export default function WeaningForm() {
                 'La cría pasó a etapa Recría.',
                 [
                     { text: 'Nuevo Registro', onPress: () => { resetForm(); setSelectedLotName(''); } },
-                    { text: 'Volver', onPress: () => { resetForm(); router.back(); } },
+                    { text: 'Volver', onPress: () => { resetForm(); handleBack(); } },
                 ]
             );
         }
@@ -57,7 +62,7 @@ export default function WeaningForm() {
     return (
         <View style={styles.mainContainer}>
             <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={styles.headerTextContainer}>

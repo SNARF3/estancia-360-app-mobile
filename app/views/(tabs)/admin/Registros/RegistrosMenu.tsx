@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
+    Alert,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -10,108 +10,123 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+    CowIcon,
+    DnaIcon,
+    HealthIcon,
+    IncidentIcon,
+    MovementsIcon,
+    PlusAnimalIcon,
+    ScaleIcon,
+    TreatmentIcon,
+} from '../../../../../components/icons/AppIcons';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 
-// ─── Registros individuales ───────────────────────────────────────────────────
+// ─── Helpers de navegación ────────────────────────────────────────────────────
 
-const INDIVIDUAL_ITEMS: {
+function handleReproduccion(router: ReturnType<typeof useRouter>) {
+    Alert.alert('Reproducción', '¿Qué deseas registrar?', [
+        { text: 'Servicio reproductivo', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm?from=registros' as any) },
+        { text: 'Diagnóstico gestación', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm?from=registros' as any) },
+        { text: 'Cancelar', style: 'cancel' },
+    ]);
+}
+
+function handlePartos(router: ReturnType<typeof useRouter>) {
+    Alert.alert('Partos', '¿Qué deseas registrar?', [
+        { text: 'Registrar parto', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/ParturitionForm?from=registros' as any) },
+        { text: 'Registrar destete', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/WeaningForm?from=registros' as any) },
+        { text: 'Cancelar', style: 'cancel' },
+    ]);
+}
+
+// ─── Tiles de la grilla ───────────────────────────────────────────────────────
+
+interface GridTile {
     label: string;
-    description: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    color: string;
-    route: string;
-}[] = [
+    Icon: React.ComponentType<{ color?: string; size?: number }>;
+    onPress: (router: ReturnType<typeof useRouter>) => void;
+}
+
+const GRID_TILES: GridTile[] = [
     {
-        label: 'Pesaje',
-        description: 'Registrar peso y condición corporal',
-        icon: 'scale',
-        color: '#10B981',
-        route: '/views/(tabs)/admin/Ranch/rearing/WeightRecordForm',
+        label: 'Reproducción',
+        Icon: DnaIcon,
+        onPress: (r) => handleReproduccion(r),
     },
     {
-        label: 'Vacunación',
-        description: 'Aplicación de vacuna al animal',
-        icon: 'shield-checkmark',
-        color: '#3B82F6',
-        route: '/views/(tabs)/admin/Ranch/health/VaccinationForm',
+        label: 'Partos',
+        Icon: CowIcon,
+        onPress: (r) => handlePartos(r),
     },
     {
-        label: 'Tratamiento',
-        description: 'Medicación, dosis y período de retiro',
-        icon: 'bandage',
-        color: '#F97316',
-        route: '/views/(tabs)/admin/Ranch/health/TreatmentForm',
+        label: 'Pesajes',
+        Icon: ScaleIcon,
+        onPress: (r) => r.push('/views/(tabs)/admin/Ranch/rearing/WeightRecordForm?from=registros' as any),
     },
     {
-        label: 'Incidente Sanitario',
-        description: 'Enfermedad detectada o cuarentena',
-        icon: 'warning',
-        color: '#EF4444',
-        route: '/views/(tabs)/admin/Ranch/health/HealthIncidentForm',
+        label: 'Nuevo Animal',
+        Icon: PlusAnimalIcon,
+        onPress: (r) => r.push('/views/(tabs)/admin/Ranch/Animals/AddAnimal?from=registros' as any),
     },
     {
-        label: 'Servicio de Reproducción',
-        description: 'Monta natural, IA o transferencia embrionaria',
-        icon: 'heart',
-        color: '#F59E0B',
-        route: '/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm',
+        label: 'Sanidad',
+        Icon: HealthIcon,
+        onPress: (r) => r.push('/views/(tabs)/admin/Ranch/health/SaludForm?from=registros' as any),
     },
     {
-        label: 'Diagnóstico de Gestación',
-        description: 'Palpación o ecografía',
-        icon: 'analytics',
-        color: Colors.primary,
-        route: '/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm',
-    },
-    {
-        label: 'Parto',
-        description: 'Registro del nacimiento y estado de la cría',
-        icon: 'fitness',
-        color: '#8B5CF6',
-        route: '/views/(tabs)/admin/Ranch/breeding/ParturitionForm',
-    },
-    {
-        label: 'Destete',
-        description: 'Separación de la cría de su madre',
-        icon: 'git-branch',
-        color: '#0EA5E9',
-        route: '/views/(tabs)/admin/Ranch/breeding/WeaningForm',
+        label: 'Movimientos',
+        Icon: MovementsIcon,
+        onPress: (r) => r.push('/views/(tabs)/admin/Ranch/movements/MovimientosMenu?from=registros' as any),
     },
 ];
 
-// ─── Cargas masivas ───────────────────────────────────────────────────────────
+// ─── Botones de cargas masivas ────────────────────────────────────────────────
 
-const BULK_ITEMS: {
+interface BulkItem {
     label: string;
-    description: string;
-    icon: keyof typeof Ionicons.glyphMap;
+    Icon: React.ComponentType<{ color?: string; size?: number }>;
     route?: string;
-}[] = [
+}
+
+const BULK_ITEMS: BulkItem[] = [
     {
-        label: 'Importar Animales',
-        description: 'Carga masiva desde Excel',
-        icon: 'paw',
+        label: 'Animales',
+        Icon: CowIcon,
         route: '/views/(tabs)/admin/bulkImport/BulkImportAnimals',
     },
     {
-        label: 'Importar Pesos',
-        description: 'Registros de pesaje en lote',
-        icon: 'scale',
+        label: 'Pesaje',
+        Icon: ScaleIcon,
         route: '/views/(tabs)/admin/bulkImport/BulkImportWeights',
     },
     {
-        label: 'Importar Vacunaciones',
-        description: 'Próximamente disponible',
-        icon: 'shield-checkmark',
+        label: 'Vacunaciones',
+        Icon: HealthIcon,
+        route: '/views/(tabs)/admin/bulkImport/BulkImportVaccinations',
     },
     {
-        label: 'Importar Servicios',
-        description: 'Próximamente disponible',
-        icon: 'heart',
+        label: 'Tratamientos',
+        Icon: TreatmentIcon,
+        route: '/views/(tabs)/admin/bulkImport/BulkImportTreatments',
+    },
+    {
+        label: 'Incidentes Sanitarios',
+        Icon: IncidentIcon,
+        route: '/views/(tabs)/admin/bulkImport/BulkImportIncidents',
+    },
+    {
+        label: 'Gestación',
+        Icon: DnaIcon,
+        route: '/views/(tabs)/admin/bulkImport/BulkImportGestation',
+    },
+    {
+        label: 'Movimientos',
+        Icon: MovementsIcon,
     },
 ];
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+// ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function RegistrosMenuScreen() {
     const router = useRouter();
@@ -123,64 +138,54 @@ export default function RegistrosMenuScreen() {
 
             {/* Header */}
             <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-                <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management')} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={28} color={Colors.primary} />
-                </TouchableOpacity>
                 <Text style={styles.title}>Registros</Text>
-                <View style={{ width: 28 }} />
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
+                {/* ── Registros Individuales ─── */}
+                <Text style={styles.sectionTitle}>Registros Individuales</Text>
 
-                {/* ── Registros individuales ─────────────────────── */}
-                <Text style={styles.sectionLabel}>REGISTROS INDIVIDUALES</Text>
-                <Text style={styles.sectionHint}>Selecciona el tipo y luego ingresa el arete del animal</Text>
-
-                {INDIVIDUAL_ITEMS.map((item) => (
-                    <TouchableOpacity
-                        key={item.label}
-                        style={styles.itemRow}
-                        onPress={() => router.push(item.route as any)}
-                        activeOpacity={0.75}
-                    >
-                        <View style={[styles.itemIcon, { backgroundColor: item.color + '18' }]}>
-                            <Ionicons name={item.icon} size={22} color={item.color} />
-                        </View>
-                        <View style={styles.itemText}>
-                            <Text style={styles.itemLabel}>{item.label}</Text>
-                            <Text style={styles.itemDesc}>{item.description}</Text>
-                        </View>
-                        <Ionicons name="chevron-forward" size={18} color={Colors.textDisabled} />
-                    </TouchableOpacity>
-                ))}
-
-                {/* ── Cargas masivas ─────────────────────────────── */}
-                <Text style={[styles.sectionLabel, { marginTop: Spacing.xl }]}>CARGAS MASIVAS</Text>
-                <Text style={styles.sectionHint}>Importación desde archivo Excel</Text>
-
-                {BULK_ITEMS.map((item) => {
-                    const available = !!item.route;
-                    return (
+                <View style={styles.grid}>
+                    {GRID_TILES.map((tile) => (
                         <TouchableOpacity
-                            key={item.label}
-                            style={[styles.itemRow, !available && styles.itemRowDisabled]}
-                            onPress={() => available && router.push(item.route as any)}
-                            activeOpacity={available ? 0.75 : 1}
+                            key={tile.label}
+                            style={styles.tile}
+                            onPress={() => tile.onPress(router)}
+                            activeOpacity={0.82}
                         >
-                            <View style={[styles.itemIcon, { backgroundColor: available ? Colors.primary + '15' : Colors.border }]}>
-                                <Ionicons name={item.icon} size={22} color={available ? Colors.primary : Colors.textDisabled} />
-                            </View>
-                            <View style={styles.itemText}>
-                                <Text style={[styles.itemLabel, !available && styles.itemLabelDisabled]}>{item.label}</Text>
-                                <Text style={styles.itemDesc}>{item.description}</Text>
-                            </View>
-                            {available
-                                ? <Ionicons name="chevron-forward" size={18} color={Colors.textDisabled} />
-                                : <View style={styles.prontoBadge}><Text style={styles.prontoText}>PRONTO</Text></View>
-                            }
+                            <tile.Icon size={56} color="white" />
+                            <Text style={styles.tileLabel}>{tile.label}</Text>
                         </TouchableOpacity>
-                    );
-                })}
+                    ))}
+                </View>
+
+                {/* ── Cargas masivas ─── */}
+                <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Cargas masivas</Text>
+
+                <View style={styles.bulkList}>
+                    {BULK_ITEMS.map((item) => {
+                        const available = !!item.route;
+                        return (
+                            <TouchableOpacity
+                                key={item.label}
+                                style={[styles.bulkBtn, !available && styles.bulkBtnDisabled]}
+                                onPress={() => available && router.push(item.route as any)}
+                                activeOpacity={available ? 0.82 : 1}
+                            >
+                                <item.Icon size={40} color="white" />
+                                <Text style={styles.bulkLabel}>{item.label}</Text>
+                                {!available && (
+                                    <View style={styles.prontoBadge}>
+                                        <Text style={styles.prontoText}>PRONTO</Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        );
+                    })}
+                </View>
 
                 <View style={{ height: Spacing.tabBarHeight + 20 }} />
             </ScrollView>
@@ -190,58 +195,110 @@ export default function RegistrosMenuScreen() {
 
 // ─── Estilos ──────────────────────────────────────────────────────────────────
 
+const TILE_BG = Colors.primary + 'BF'; // rgba(51,108,54,0.75) — mismo verde del Figma
+
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: Colors.background },
-    header: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
+    root: {
+        flex: 1,
         backgroundColor: Colors.background,
     },
-    backBtn: { padding: 4 },
-    title: { ...Typography.h2, color: Colors.primary, fontWeight: '800', fontSize: 24 },
 
-    scrollContent: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md },
-
-    sectionLabel: {
-        ...Typography.overline,
-        color: Colors.primary,
-        fontWeight: '900',
-        fontSize: 12,
-        letterSpacing: 1,
-        marginBottom: 4,
-        borderLeftWidth: 3,
-        borderLeftColor: Colors.primary,
-        paddingLeft: 10,
-    },
-    sectionHint: {
-        ...Typography.bodySmall,
-        color: Colors.textSecondary,
-        marginBottom: Spacing.md,
-        marginLeft: 13,
-    },
-
-    itemRow: {
+    // ── Header ──────────────────────────────────────────────────────────────────
+    header: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.white,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.md,
-        marginBottom: Spacing.sm,
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: Spacing.md,
+        backgroundColor: Colors.background,
+    },
+    backBtn: { padding: 2 },
+    title: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 24,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+    },
+
+    scrollContent: {
+        paddingHorizontal: Spacing.lg,
+        paddingTop: Spacing.md,
+    },
+
+    // ── Sección ──────────────────────────────────────────────────────────────────
+    sectionTitle: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+        textAlign: 'center',
+        marginBottom: Spacing.lg,
+    },
+
+    // ── Grid de tiles ────────────────────────────────────────────────────────────
+    grid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 13,
+        justifyContent: 'center',
+        marginBottom: -Spacing.md,
+    },
+    tile: {
+        width: '46%',
+        aspectRatio: 1,
+        backgroundColor: TILE_BG,
+        borderRadius: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        paddingBottom: 18,
         ...Shadows.card,
+    },
+    tileLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.white,
+        textAlign: 'center',
+        paddingHorizontal: 8,
+    },
+
+    // ── Cargas masivas ───────────────────────────────────────────────────────────
+    bulkList: {
         gap: Spacing.md,
     },
-    itemRowDisabled: { opacity: 0.55 },
-    itemIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    itemText: { flex: 1 },
-    itemLabel: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary, marginBottom: 2 },
-    itemLabelDisabled: { color: Colors.textSecondary },
-    itemDesc: { fontSize: 12, color: Colors.textSecondary },
-
+    bulkBtn: {
+        backgroundColor: TILE_BG,
+        borderRadius: BorderRadius.lg,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: Spacing.lg,
+        paddingHorizontal: Spacing.xl,
+        gap: Spacing.md,
+        ...Shadows.card,
+    },
+    bulkBtnDisabled: {
+        opacity: 0.65,
+    },
+    bulkLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.white,
+        flex: 1,
+        textAlign: 'center',
+    },
     prontoBadge: {
-        backgroundColor: Colors.border,
+        backgroundColor: 'rgba(255,255,255,0.2)',
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 6,
     },
-    prontoText: { fontSize: 9, fontWeight: '900', color: Colors.textDisabled, letterSpacing: 0.5 },
+    prontoText: {
+        fontSize: 9,
+        fontWeight: '900',
+        color: 'rgba(255,255,255,0.85)',
+        letterSpacing: 0.5,
+    },
 });

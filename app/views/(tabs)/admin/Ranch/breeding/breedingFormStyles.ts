@@ -224,7 +224,7 @@ export const breedingFormStyles = StyleSheet.create({
     },
     // Save button
     saveButton: {
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.primaryButton,
         height: 56,
         borderRadius: BorderRadius.lg,
         alignItems: 'center',

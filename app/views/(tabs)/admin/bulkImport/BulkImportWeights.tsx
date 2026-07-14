@@ -538,7 +538,7 @@ export default function BulkImportWeights() {
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
             {step !== 'done' && (
                 <View style={[s.header, { paddingTop: insets.top + 12 }]}>
-                    <TouchableOpacity onPress={() => { reset(); router.replace('/views/(tabs)/admin/bulkImport/bulkImport' as any); }} style={s.backBtn} disabled={blocked}>
+                    <TouchableOpacity onPress={() => { reset(); router.replace('/views/(tabs)/admin/Registros/RegistrosMenu' as any); }} style={s.backBtn} disabled={blocked}>
                         <Ionicons name="arrow-back" size={28} color={blocked ? Colors.textDisabled : Colors.primary} />
                     </TouchableOpacity>
                     <View style={s.titleWrap}>
@@ -590,7 +590,7 @@ const s = StyleSheet.create({
     statNum: { fontSize: 32, fontWeight: '900' },
     statLbl: { fontSize: 11, color: Colors.textSecondary, fontWeight: '700', marginTop: 2 },
 
-    primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary, borderRadius: BorderRadius.lg, paddingVertical: 16, paddingHorizontal: 28, gap: 8, width: '100%', marginTop: Spacing.md, ...Shadows.floatingButton },
+    primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primaryButton, borderRadius: BorderRadius.lg, paddingVertical: 16, paddingHorizontal: 28, gap: 8, width: '100%', marginTop: Spacing.md, ...Shadows.floatingButton },
     primaryBtnTxt: { color: Colors.white, fontSize: 16, fontWeight: '800' },
     secondaryBtn: { paddingVertical: 14, paddingHorizontal: 24, marginTop: Spacing.sm },
     secondaryBtnTxt: { color: Colors.primary, fontSize: 14, fontWeight: '700' },

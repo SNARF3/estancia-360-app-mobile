@@ -465,7 +465,7 @@ const ms = StyleSheet.create({
     textarea: { height: 80, textAlignVertical: 'top' },
     errorBox: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.error + '15', borderRadius: BorderRadius.sm, padding: 10, marginBottom: Spacing.md },
     errorTxt: { fontSize: 13, color: Colors.error, flex: 1 },
-    saveBtn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.lg, paddingVertical: 16, alignItems: 'center', marginTop: 4, ...Shadows.floatingButton },
+    saveBtn: { backgroundColor: Colors.primaryButton, borderRadius: BorderRadius.lg, paddingVertical: 16, alignItems: 'center', marginTop: 4, ...Shadows.floatingButton },
     saveBtnDisabled: { backgroundColor: Colors.textDisabled },
     saveBtnTxt: { color: Colors.white, fontSize: 15, fontWeight: '800' },
     typeChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: BorderRadius.xl, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background },

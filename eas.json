@@ -35,5 +35,14 @@
         "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascApiKeyPath": "/Users/marvinmolloramirez/Estancia360/AuthKey_F5FZM5J4JJ.p8",
+        "ascApiKeyId": "F5FZM5J4JJ",
+        "ascApiKeyIssuerId": "aa7ec381-9b84-4939-9385-b5e0fe2e9e71"
+      }
+    }
   }
 }

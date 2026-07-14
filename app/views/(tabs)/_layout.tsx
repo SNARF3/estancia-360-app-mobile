@@ -53,6 +53,10 @@ export default function TabLayout() {
         options={{ href: null }}
       />
       <Tabs.Screen
+        name="admin/bulkImport/BulkImportVaccinations"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
         name="admin/bulkImport/bulkImport"
         options={{ href: null }}
       />

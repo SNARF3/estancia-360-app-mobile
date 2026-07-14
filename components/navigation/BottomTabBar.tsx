@@ -49,12 +49,6 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
       route: '/views/(tabs)/admin/sync/SyncScreen',
     },
     {
-      name: 'weights',
-      label: 'Pesos',
-      icon: 'stats-chart',
-      route: '/views/(tabs)/admin/weights/WeightsScreen',
-    },
-    {
       name: 'usuario',
       label: 'Perfil',
       icon: 'person',
@@ -93,17 +87,22 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
     pathname.includes('/admin/Ranch/rearing') ||
     pathname.includes('/admin/Ranch/fattening') ||
     pathname.includes('/admin/Ranch/health') ||
-    pathname.includes('/admin/Ranch/Pastures');
+    pathname.includes('/admin/Ranch/Pastures') ||
+    pathname.includes('/admin/Ranch/movements') ||
+    pathname.includes('/admin/bulkImport') ||
+    pathname.includes('/admin/weights');
 
   if (options.tabBarStyle?.display === 'none' || isHiddenModule) {
     return null;
   }
 
   return (
+    <View style={styles.wrapper}>
     <View style={styles.container}>
       <View style={styles.background} />
 
       {tabs.map((tab) => {
+
         const isFocused = pathname.includes(tab.name);
 
         const onPress = () => {
@@ -147,10 +146,14 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
         );
       })}
     </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    backgroundColor: Colors.background,
+  },
   container: {
     flexDirection: 'row',
     backgroundColor: Colors.transparent,

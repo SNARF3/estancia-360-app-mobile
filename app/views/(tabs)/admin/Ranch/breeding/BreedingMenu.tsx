@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     misAnimalesCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.primaryButton,
         borderRadius: BorderRadius.xl,
         padding: Spacing.lg,
         marginBottom: Spacing.xl,

@@ -83,7 +83,7 @@ export default function RanchMenu() {
                             <Text style={styles.gridSubtitle}>Vacunas y Tratamientos</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.gridCard} onPress={() => handleNavigation('/views/UnderConstruction')}>
+                        <TouchableOpacity style={styles.gridCard} onPress={() => handleNavigation('/views/(tabs)/admin/Ranch/movements/MovimientosMenu')}>
                             <View style={styles.iconWrapper}>
                                 <Ionicons name="swap-horizontal" size={32} color={Colors.primary} />
                             </View>

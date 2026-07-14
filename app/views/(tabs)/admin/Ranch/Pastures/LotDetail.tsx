@@ -14,13 +14,23 @@ import { AnimalPickerModal } from '../../../../../../components/common/AnimalPic
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import { getSession } from '../../../../../../hooks/auth/use-Auth';
 import { LOT_TYPE_COLORS, LOT_TYPE_LABELS } from '../../../../../../hooks/Ranch/use-Pastures';
-import { assignAnimalToLot, getAnimalByCode, getAnimals } from '../../../../../../hooks/db.sqlite/repositories/animals';
+import { assignAnimalToLot, getAnimalByCode, getAnimals, updateAnimalProductiveStatus } from '../../../../../../hooks/db.sqlite/repositories/animals';
 import type { Animal } from '../../../../../../hooks/db.sqlite/repositories/animals';
 import type { LotType } from '../../../../../../hooks/Ranch/use-Pastures';
 
 // ─── Constantes de estado productivo ─────────────────────────────────────────
 
 const STATUS_LABELS: Record<number, string> = { 1: 'Cría', 2: 'Recría', 3: 'Engorde', 4: 'Baja' };
+
+function lotTypeToProductiveStatus(lotType: string): number | null {
+  switch (lotType) {
+    case 'cria':         return 1;
+    case 'recria':       return 2;
+    case 'engorde':      return 3;
+    case 'reproductiva': return 1;
+    default:             return null; // 'general' → sin cambio
+  }
+}
 const STATUS_COLORS: Record<number, string> = {
   1: Colors.warning,
   2: Colors.primary,
@@ -75,22 +85,29 @@ export default function LotDetail() {
         return;
       }
 
+      const newPs = lotTypeToProductiveStatus(lotType);
+      const stageMsg = newPs ? ` Pasará a etapa ${STATUS_LABELS[newPs]}.` : '';
       const confirmMsg = animal.id_lot
-        ? `El animal ${code} está en otro lote. ¿Moverlo a "${lotName}"?`
-        : `¿Asignar el animal ${code} al lote "${lotName}"?`;
+        ? `El animal ${code} será movido a "${lotName}".${stageMsg}`
+        : `El animal ${code} será asignado al lote "${lotName}".${stageMsg}`;
 
-      Alert.alert('Asignar al lote', confirmMsg, [
+      Alert.alert('Mover al lote', confirmMsg, [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Confirmar',
           onPress: async () => {
-            await assignAnimalToLot(animal.id, lotId);
+            if (newPs !== null) {
+              // Actualiza lote + etapa productiva en un solo UPDATE
+              await updateAnimalProductiveStatus(animal.id, newPs, lotId);
+            } else {
+              await assignAnimalToLot(animal.id, lotId);
+            }
             await loadAnimals();
           },
         },
       ]);
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'No se pudo asignar el animal.');
+      Alert.alert('Error', e.message ?? 'No se pudo mover el animal.');
     }
   };
 

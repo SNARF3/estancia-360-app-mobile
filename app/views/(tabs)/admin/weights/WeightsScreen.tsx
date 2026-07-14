@@ -78,15 +78,31 @@ export default function WeightsScreen() {
       );
       setAnimals(animalRows);
 
-      // Resumen por lote
+      // Resumen por lote — usa último weight_record si existe, sino peso inicial del animal
       const lotRows = await db.getAllAsync<LotWeightRow>(
         `SELECT
           rl.name         AS lot_name,
           rp.name         AS pasture_name,
           rl.lot_type,
           COUNT(a.id)     AS animal_count,
-          ROUND(AVG(a.weight), 1) AS avg_weight,
-          ROUND(SUM(a.weight), 1) AS total_kg
+          ROUND(AVG(
+            COALESCE(
+              (SELECT wr.weight FROM weight_records wr
+               JOIN animal_events ae ON ae.id = wr.id_event
+               WHERE ae.id_ranch_animal = a.id
+               ORDER BY wr.created_at DESC LIMIT 1),
+              a.weight
+            )
+          ), 1) AS avg_weight,
+          ROUND(SUM(
+            COALESCE(
+              (SELECT wr.weight FROM weight_records wr
+               JOIN animal_events ae ON ae.id = wr.id_event
+               WHERE ae.id_ranch_animal = a.id
+               ORDER BY wr.created_at DESC LIMIT 1),
+              a.weight
+            )
+          ), 1) AS total_kg
         FROM ranch_lots rl
         JOIN ranch_pastures rp ON rp.id = rl.id_ranch_pasture
         LEFT JOIN ranch_animals a ON a.id_lot = rl.id

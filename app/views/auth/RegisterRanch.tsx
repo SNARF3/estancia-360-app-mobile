@@ -326,6 +326,6 @@ const styles = StyleSheet.create({
     modalTitle: { ...Typography.h3, textAlign: 'center', marginBottom: Spacing.lg, color: Colors.primary },
     optionItem: { paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border },
     optionText: { ...Typography.body, textAlign: 'left', color: Colors.textPrimary },
-    doneButton: { backgroundColor: Colors.primary, borderRadius: 12, padding: Spacing.md, marginTop: Spacing.md, alignItems: 'center' },
+    doneButton: { backgroundColor: Colors.primaryButton, borderRadius: 12, padding: Spacing.md, marginTop: Spacing.md, alignItems: 'center' },
     doneButtonText: { ...Typography.body, fontWeight: 'bold', color: '#fff' },
 });

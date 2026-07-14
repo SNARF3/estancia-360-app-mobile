@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
     ...Shadows.card,
   },
   createButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryButton,
   },
   buttonText: {
     ...Typography.button,

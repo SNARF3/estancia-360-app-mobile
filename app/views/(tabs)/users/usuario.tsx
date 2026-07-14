@@ -1,454 +1,402 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router, useFocusEffect } from 'expo-router';
+import NetInfo from '@react-native-community/netinfo';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Alert,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { showMessage } from 'react-native-flash-message';
-import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BarnIcon } from '../../../../components/icons/AppIcons';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../constants/theme';
-import { getUserData, SessionParams } from '../../../../hooks/auth/use-Auth';
+import { getUserData, logout, SessionParams } from '../../../../hooks/auth/use-Auth';
 import { getDb } from '../../../../hooks/db.sqlite/db-pool';
 
-// ─── Plan ─────────────────────────────────────────────────────────────────────
-
-const PLAN_FREE = {
-  name: 'FREE',
-  color: Colors.textSecondary,
-  bg: Colors.textDisabled + '30',
-  features: ['Hasta 200 animales', 'Módulo Cría', 'Módulo Recría', 'Sincronización básica'],
+const ROLE_LABELS: Record<number, string> = {
+    1: 'Ganadero',
+    2: 'Trabajador',
+    3: 'Administrador',
 };
-
-const PLAN_PREMIUM = {
-  name: 'PREMIUM',
-  color: '#F59E0B',
-  bg: '#F59E0B20',
-  features: [
-    'Animales ilimitados',
-    'Todos los módulos',
-    'Sincronización automática',
-    'Reportes avanzados',
-    'Soporte prioritario',
-  ],
-};
-
-// ─── Pantalla ────────────────────────────────────────────────────────────────
 
 export default function UsuarioScreen() {
-  const [userData, setUserData] = useState<SessionParams | null>(null);
-  const [roleName, setRoleName] = useState('Usuario');
+    const insets = useSafeAreaInsets();
+    const [userData, setUserData] = useState<SessionParams | null>(null);
+    const [roleName, setRoleName] = useState('Usuario');
+    const [animalCount, setAnimalCount] = useState<number | null>(null);
+    const [hectareas, setHectareas] = useState<number | null>(null);
+    const [isOnline, setIsOnline] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      getUserData().then((data) => {
-        if (!data) return;
-        setUserData(data);
-        switch (data.ranch_role) {
-          case 1: setRoleName('Dueño'); break;
-          case 2: setRoleName('Trabajador'); break;
-          case 3: setRoleName('Administrador'); break;
-          default: setRoleName('Usuario');
-        }
-      });
-    }, [])
-  );
+    useFocusEffect(
+        useCallback(() => {
+            getUserData().then((data) => {
+                if (!data) return;
+                setUserData(data);
+                setRoleName(ROLE_LABELS[data.ranch_role] ?? 'Usuario');
+            });
 
-  const plan = PLAN_FREE; // por ahora siempre FREE
+            getDb().then(async db => {
+                const animals = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM ranch_animals WHERE status = 1');
+                setAnimalCount(animals?.count ?? 0);
+                const ha = await db.getFirstAsync<{ total: number }>('SELECT COALESCE(SUM(area_hectares), 0) as total FROM ranch_pastures');
+                setHectareas(ha?.total ?? 0);
+            }).catch(() => {});
 
-  const handleClearTestData = () => {
-    Alert.alert(
-      'Borrar datos de prueba',
-      'Esto eliminará TODOS los animales y sus registros (pesajes, eventos, cría, sanidad, etc.). Los potreros y lotes se conservan. ¿Continuar?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Borrar todo', style: 'destructive', onPress: async () => {
-            try {
-              const db = await getDb();
-              const tables = [
-                'weight_records', 'rearing_selections', 'fattening_entries',
-                'feed_records', 'vaccinations', 'treatments', 'health_incidents',
-                'breeding_services', 'gestation_diagnoses', 'parturitions', 'weanings',
-                'animal_declared_history', 'animal_events', 'ranch_animals',
-              ];
-              for (const t of tables) {
-                await db.runAsync(`DELETE FROM ${t}`);
-              }
-              showMessage({ message: 'Datos borrados', description: 'Todos los animales y registros fueron eliminados.', type: 'success', floating: true });
-            } catch (e: any) {
-              Alert.alert('Error', e.message ?? 'No se pudieron borrar los datos.');
-            }
-          },
-        },
-      ]
+            const unsub = NetInfo.addEventListener(state => {
+                setIsOnline(!!state.isConnected);
+            });
+            return unsub;
+        }, [])
     );
-  };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro que deseas cerrar sesión?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Cerrar Sesión',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await AsyncStorage.multiRemove([
-                'access_token',
-                'user_id',
-                'user_role',
-                'user_data',
-              ]);
-              showMessage({
-                message: 'Sesión cerrada',
-                description: 'Hasta pronto.',
-                type: 'success',
-                floating: true,
-              });
-              setTimeout(() => router.replace('/views/auth/Login'), 500);
-            } catch {
-              showMessage({
-                message: 'Error',
-                description: 'No se pudo cerrar sesión.',
-                type: 'danger',
-                floating: true,
-              });
-            }
-          },
-        },
-      ],
-      { cancelable: true }
+    const handleLogout = () => {
+        Alert.alert(
+            'Cerrar Sesión',
+            '¿Estás seguro que deseas cerrar sesión?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Cerrar Sesión',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await logout();
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleClearTestData = () => {
+        Alert.alert(
+            'Borrar datos de prueba',
+            'Esto eliminará TODOS los animales y sus registros. Los potreros y lotes se conservan. ¿Continuar?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Borrar todo',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const db = await getDb();
+                            const tables = [
+                                'weight_records', 'rearing_selections', 'fattening_entries',
+                                'feed_records', 'vaccinations', 'treatments', 'health_incidents',
+                                'breeding_services', 'gestation_diagnoses', 'parturitions', 'weanings',
+                                'animal_declared_history', 'animal_events', 'ranch_animals',
+                            ];
+                            for (const t of tables) {
+                                await db.runAsync(`DELETE FROM ${t}`);
+                            }
+                            setAnimalCount(0);
+                        } catch (e: any) {
+                            Alert.alert('Error', e.message ?? 'No se pudieron borrar los datos.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    return (
+        <View style={styles.root}>
+            <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+
+            {/* Header */}
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+                <View style={[styles.statusBadge, isOnline ? styles.onlineBadge : styles.offlineBadge]}>
+                    <Text style={[styles.statusText, isOnline ? styles.onlineText : styles.offlineText]}>
+                        {isOnline ? 'Online' : 'Offline'}
+                    </Text>
+                </View>
+                <TouchableOpacity style={styles.salirBtn} onPress={handleLogout} activeOpacity={0.75}>
+                    <Text style={styles.salirText}>Salir</Text>
+                </TouchableOpacity>
+            </View>
+
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
+                {/* Avatar + nombre + rol */}
+                <View style={styles.profileHeader}>
+                    <View style={styles.avatar}>
+                        <Ionicons name="person" size={44} color={Colors.white} />
+                    </View>
+                    <Text style={styles.userName}>{userData?.fullname || 'Usuario'}</Text>
+                    <Text style={styles.userRole}>{roleName}</Text>
+                </View>
+
+                {/* Tarjeta de estancia */}
+                {userData?.ranch_name && (
+                    <View style={styles.ranchCard}>
+                        <View style={styles.ranchTop}>
+                            <View style={styles.ranchIconWrap}>
+                                <BarnIcon size={36} color={Colors.secondary} />
+                            </View>
+                            <View style={styles.ranchInfo}>
+                                <Text style={styles.ranchLabel}>Estancia</Text>
+                                <Text style={styles.ranchName}>{userData.ranch_name}</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.statsRow}>
+                            <View style={styles.statChip}>
+                                <Ionicons name="paw" size={18} color={Colors.primary} />
+                                <View>
+                                    <Text style={styles.statLabel}>Animales</Text>
+                                    <Text style={styles.statValue}>
+                                        {animalCount !== null ? animalCount : '---'}
+                                    </Text>
+                                </View>
+                            </View>
+                            <View style={styles.statChip}>
+                                <Ionicons name="leaf" size={18} color={Colors.accent} />
+                                <View>
+                                    <Text style={styles.statLabel}>Hectáreas</Text>
+                                    <Text style={styles.statValue}>
+                                        {hectareas !== null ? hectareas.toFixed(1) : '---'}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+                )}
+
+                {/* Información personal */}
+                <Text style={styles.sectionTitle}>Información personal</Text>
+
+                <View style={styles.infoCard}>
+                    {[
+                        { label: 'Nombre completo', value: userData?.fullname || '---' },
+                        { label: 'Email', value: userData?.email || '---' },
+                        { label: 'Teléfono', value: '---' },
+                        { label: 'Rol', value: roleName },
+                    ].map((row, i, arr) => (
+                        <View
+                            key={row.label}
+                            style={[styles.infoRow, i < arr.length - 1 && styles.infoRowBorder]}
+                        >
+                            <Text style={styles.infoLabel}>{row.label}</Text>
+                            <Text style={styles.infoValue} numberOfLines={1}>{row.value}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Borrar datos de prueba */}
+                <TouchableOpacity style={styles.dangerBtn} onPress={handleClearTestData} activeOpacity={0.8}>
+                    <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                    <Text style={styles.dangerBtnText}>Borrar datos de prueba</Text>
+                </TouchableOpacity>
+
+                <Text style={styles.version}>Estancia360 v2.0</Text>
+                <View style={{ height: Spacing.tabBarHeight + 20 }} />
+            </ScrollView>
+        </View>
     );
-  };
-
-  const initials = userData?.fullname
-    ? userData.fullname.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
-    : '?';
-
-  return (
-    <ScreenContainer scrollable={false} style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Avatar + nombre */}
-        <View style={styles.profileHeader}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
-          <Text style={styles.userName}>{userData?.fullname || 'Usuario'}</Text>
-          <Text style={styles.userEmail}>{userData?.email || ''}</Text>
-          <View style={[styles.roleBadge, { backgroundColor: Colors.primary + '20' }]}>
-            <Text style={[styles.roleBadgeText, { color: Colors.primary }]}>{roleName}</Text>
-          </View>
-        </View>
-
-        {/* Estancia */}
-        {userData?.ranch_name && (
-          <View style={styles.ranchCard}>
-            <Ionicons name="leaf" size={20} color={Colors.primary} />
-            <View style={styles.ranchInfo}>
-              <Text style={styles.ranchLabel}>Estancia activa</Text>
-              <Text style={styles.ranchName}>{userData.ranch_name}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Plan */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Plan de suscripción</Text>
-          <View style={styles.planCard}>
-            <View style={styles.planHeader}>
-              <View style={[styles.planBadge, { backgroundColor: plan.bg }]}>
-                <Text style={[styles.planBadgeText, { color: plan.color }]}>{plan.name}</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.upgradeBtn}
-                onPress={() =>
-                  showMessage({
-                    message: 'Próximamente',
-                    description: 'La suscripción Premium estará disponible pronto.',
-                    type: 'info',
-                    floating: true,
-                  })
-                }
-              >
-                <Ionicons name="star" size={14} color={Colors.white} />
-                <Text style={styles.upgradeBtnText}>Mejorar a Premium</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.featureList}>
-              {plan.features.map((f, i) => (
-                <View key={i} style={styles.featureRow}>
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
-                  <Text style={styles.featureText}>{f}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.premiumTeaser}>
-              <Text style={styles.premiumTeaserText}>Con Premium también obtienes:</Text>
-              {PLAN_PREMIUM.features.slice(3).map((f, i) => (
-                <View key={i} style={styles.featureRow}>
-                  <Ionicons name="lock-closed" size={14} color={Colors.textDisabled} />
-                  <Text style={[styles.featureText, { color: Colors.textDisabled }]}>{f}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        </View>
-
-        {/* Opciones */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cuenta</Text>
-          <View style={styles.menuCard}>
-            {[
-              { icon: 'help-circle-outline', label: 'Ayuda y soporte', onPress: () => {} },
-              { icon: 'information-circle-outline', label: 'Acerca de Estancia360', onPress: () => {} },
-            ].map((item, i) => (
-              <TouchableOpacity key={i} style={styles.menuRow} onPress={item.onPress} activeOpacity={0.7}>
-                <Ionicons name={item.icon as any} size={22} color={Colors.textSecondary} />
-                <Text style={styles.menuLabel}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={18} color={Colors.textDisabled} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* Borrar datos de prueba */}
-        <TouchableOpacity style={styles.clearBtn} onPress={handleClearTestData} activeOpacity={0.8}>
-          <Ionicons name="trash-outline" size={22} color={Colors.error} />
-          <Text style={styles.logoutText}>Borrar datos de prueba</Text>
-        </TouchableOpacity>
-
-        {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
-          <Ionicons name="log-out-outline" size={22} color={Colors.error} />
-          <Text style={styles.logoutText}>Cerrar Sesión</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.version}>Estancia360 v1.0 MVP</Text>
-
-        <View style={{ height: Spacing.tabBarHeight + 20 }} />
-      </ScrollView>
-    </ScreenContainer>
-  );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: 60,
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  profileHeader: {
-    alignItems: 'center',
-    paddingVertical: Spacing.xl,
-  },
-  avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-    ...Shadows.floatingButton,
-  },
-  avatarText: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 32,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  userName: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    textTransform: 'capitalize',
-    marginBottom: 4,
-  },
-  userEmail: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 13,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.sm,
-  },
-  roleBadge: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
-  },
-  roleBadgeText: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  ranchCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginBottom: Spacing.lg,
-    ...Shadows.tabBar,
-  },
-  ranchInfo: { flex: 1 },
-  ranchLabel: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 11,
-    color: Colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  ranchName: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-  },
-  section: {
-    marginBottom: Spacing.xl,
-  },
-  sectionTitle: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: Spacing.md,
-  },
-  planCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...Shadows.tabBar,
-  },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.md,
-  },
-  planBadge: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 4,
-    borderRadius: BorderRadius.sm,
-  },
-  planBadgeText: {
-    fontFamily: Typography.fontPrimary,
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  upgradeBtn: {
-    backgroundColor: '#F59E0B',
-    borderRadius: BorderRadius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
-    gap: 4,
-  },
-  upgradeBtnText: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  featureList: {
-    gap: 6,
-    marginBottom: Spacing.md,
-  },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  featureText: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 13,
-    color: Colors.textPrimary,
-  },
-  premiumTeaser: {
-    borderTopWidth: 1,
-    borderTopColor: Colors.textDisabled + '30',
-    paddingTop: Spacing.md,
-    gap: 6,
-  },
-  premiumTeaserText: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginBottom: 4,
-  },
-  menuCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...Shadows.tabBar,
-  },
-  menuRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    gap: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.textDisabled + '20',
-  },
-  menuLabel: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 14,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  clearBtn: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.error + '40',
-    marginBottom: Spacing.sm,
-    ...Shadows.tabBar,
-  },
-  logoutBtn: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.md,
-    gap: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.error + '40',
-    marginBottom: Spacing.lg,
-    ...Shadows.tabBar,
-  },
-  logoutText: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.error,
-  },
-  version: {
-    fontFamily: Typography.fontSecondary,
-    fontSize: 12,
-    color: Colors.textDisabled,
-    textAlign: 'center',
-    marginBottom: Spacing.md,
-  },
+    root: {
+        flex: 1,
+        backgroundColor: Colors.background,
+    },
+
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: Spacing.md,
+    },
+    statusBadge: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.xxl,
+        borderWidth: 1.5,
+    },
+    onlineBadge: { borderColor: Colors.primary, backgroundColor: Colors.successLight },
+    offlineBadge: { borderColor: Colors.textSecondary, backgroundColor: 'transparent' },
+    statusText: { fontSize: 13, fontFamily: Typography.fontPrimary, fontWeight: '700' },
+    onlineText: { color: Colors.primary },
+    offlineText: { color: Colors.textSecondary },
+    salirBtn: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.xxl,
+        borderWidth: 1.5,
+        borderColor: Colors.textSecondary,
+    },
+    salirText: {
+        fontSize: 13,
+        fontFamily: Typography.fontPrimary,
+        fontWeight: '700',
+        color: Colors.textSecondary,
+    },
+
+    scrollContent: {
+        paddingHorizontal: Spacing.lg,
+        paddingTop: Spacing.sm,
+    },
+
+    // ── Perfil ────────────────────────────────────────────────────────────────
+    profileHeader: {
+        alignItems: 'center',
+        paddingVertical: Spacing.xl,
+    },
+    avatar: {
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        backgroundColor: Colors.primaryButton,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: Spacing.md,
+        ...Shadows.floatingButton,
+    },
+    userName: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 26,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    userRole: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 15,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+    },
+
+    // ── Tarjeta estancia ──────────────────────────────────────────────────────
+    ranchCard: {
+        backgroundColor: Colors.white,
+        borderRadius: BorderRadius.xl,
+        padding: Spacing.lg,
+        marginBottom: Spacing.xl,
+        ...Shadows.card,
+        gap: Spacing.md,
+    },
+    ranchTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    ranchIconWrap: {
+        width: 56,
+        height: 56,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.iconBg,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    ranchInfo: { flex: 1 },
+    ranchLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 12,
+        color: Colors.textSecondary,
+    },
+    ranchName: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+    },
+    statsRow: {
+        flexDirection: 'row',
+        gap: Spacing.md,
+    },
+    statChip: {
+        flex: 1,
+        backgroundColor: Colors.iconBg,
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    statLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 11,
+        color: Colors.textSecondary,
+    },
+    statValue: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 20,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+    },
+
+    // ── Información personal ──────────────────────────────────────────────────
+    sectionTitle: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 15,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+        marginBottom: Spacing.md,
+    },
+    infoCard: {
+        backgroundColor: Colors.white,
+        borderRadius: BorderRadius.xl,
+        overflow: 'hidden',
+        marginBottom: Spacing.xl,
+        ...Shadows.card,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: 16,
+    },
+    infoRowBorder: {
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    infoLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 13,
+        color: Colors.textSecondary,
+    },
+    infoValue: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 14,
+        fontWeight: '600',
+        color: Colors.textPrimary,
+        maxWidth: '60%',
+        textAlign: 'right',
+    },
+
+    // ── Acciones ──────────────────────────────────────────────────────────────
+    dangerBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.lg,
+        borderWidth: 1,
+        borderColor: Colors.error + '40',
+        backgroundColor: Colors.white,
+        marginBottom: Spacing.xl,
+        ...Shadows.card,
+    },
+    dangerBtnText: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.error,
+    },
+
+    version: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 12,
+        color: Colors.textDisabled,
+        textAlign: 'center',
+        marginBottom: Spacing.md,
+    },
 });

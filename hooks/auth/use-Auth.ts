@@ -113,6 +113,23 @@ export async function getToken(): Promise<string | null> {
   return AsyncStorage.getItem('access_token');
 }
 
+// ─── saveCredentials / getCredentials ────────────────────────────────────────
+// Guardan email+password para poder re-autenticar automáticamente antes de sync.
+// Se llaman desde use-UserLoginLogic al hacer login exitoso.
+
+export async function saveCredentials(email: string, password: string): Promise<void> {
+  await AsyncStorage.setItem('sync_credentials', JSON.stringify({ email, password }));
+}
+
+export async function getCredentials(): Promise<{ email: string; password: string } | null> {
+  try {
+    const raw = await AsyncStorage.getItem('sync_credentials');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── getUserData ──────────────────────────────────────────────────────────────
 // Datos del usuario logueado (nombre, email, rol, etc.)
 

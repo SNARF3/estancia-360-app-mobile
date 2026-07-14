@@ -24,7 +24,7 @@ export default function BreedingServiceForm() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
   const [isPickerVisible, setIsPickerVisible] = useState(false);
-    const params = useLocalSearchParams<{ animalCode?: string }>();
+    const params = useLocalSearchParams<{ animalCode?: string; from?: string }>();
     const {
         formData,
         updateField,
@@ -41,6 +41,14 @@ export default function BreedingServiceForm() {
         }
     }, [params.animalCode]);
 
+    const handleBack = () => {
+        if (params.from === 'registros') {
+            router.replace('/views/(tabs)/admin/Registros/RegistrosMenu' as any);
+        } else {
+            router.back();
+        }
+    };
+
     const handleSave = async () => {
         const result = await saveService();
         if (result) {
@@ -49,10 +57,7 @@ export default function BreedingServiceForm() {
                 'El servicio reproductivo ha sido registrado correctamente.',
                 [
                     { text: 'Nuevo Registro', onPress: resetForm },
-                    {
-                        text: 'Volver',
-                        onPress: () => { resetForm(); router.back(); },
-                    },
+                    { text: 'Volver', onPress: () => { resetForm(); handleBack(); } },
                 ]
             );
         }
@@ -64,7 +69,7 @@ export default function BreedingServiceForm() {
         <View style={styles.mainContainer}>
             {/* Header */}
             <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={styles.headerTextContainer}>

@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 import { getRequest, postRequest } from '../db.postre-connection/db.connection';
-import { saveSession } from './use-Auth';
+import { saveCredentials, saveSession } from './use-Auth';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -171,6 +171,7 @@ export const useUserLoginLogic = () => {
 
       // Login exitoso
       if ('accessToken' in response && response.accessToken) {
+        await saveCredentials(formData.email.trim(), formData.password);
         let userDetails: UserRanchData | null = null;
         
         // El login ya me da el idRanch. Lo usamos para traer toda la metadata.

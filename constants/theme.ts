@@ -1,25 +1,25 @@
 export const Colors = {
-  // Colores principales
-  primary: '#336c36',        // Verde Bosque Profundo
-  secondary: '#e2772a',      // Naranja Vibrante
-  accent: '#7aa641',         // Verde Oliva Medio
+  // Colores principales — verde se mantiene igual
+  primary: '#336c36',
+  primaryButton: '#336c36BF', // verde de los tiles de Registros (75% opacity)
+  secondary: '#e2772a',
+  accent: '#7aa641',
 
-  // Colores sólidos para consistencia (agregados)
-  primarySolid: '#336c36',   // Verde Bosque Profundo
-  secondarySolid: '#e2772a', // Naranja Vibrante
-  accentSolid: '#7aa641',    // Verde Oliva Medio
+  primarySolid: '#336c36',
+  secondarySolid: '#e2772a',
+  accentSolid: '#7aa641',
 
-  // Colores de texto
-  textPrimary: '#243453',    // Azul Marino Oscuro - 100% opacidad
-  textSecondary: 'rgba(36, 52, 83, 0.8)', // 80% opacidad
-  textDisabled: 'rgba(36, 52, 83, 0.6)', // 60% opacidad
-  textLight: '#f3f1e6',      // Beige Suave
+  // Colores de texto — palette Figma
+  textPrimary: '#0a0a0a',
+  textSecondary: '#4a5565',
+  textDisabled: '#6a7282',
+  textLight: '#f7f0dd',
 
-  // Fondos
-  background: '#f3f1e6',     // Beige Suave - Fondo Principal
-  backgroundSolid: '#f3f1e6', // Beige Suave sólido
-  backgroundDark: '#243453', // Azul Marino Oscuro - Fondo Oscuro
-  backgroundDarkSolid: '#243453', // Azul Marino Oscuro sólido
+  // Fondos — palette Figma
+  background: '#f7f0dd',
+  backgroundSolid: '#f7f0dd',
+  backgroundDark: '#243453',
+  backgroundDarkSolid: '#243453',
   white: '#FFFFFF',
 
   // Transparencias y Overlays
@@ -27,55 +27,57 @@ export const Colors = {
   whiteSecondary: 'rgba(255, 255, 255, 0.8)',
   transparent: 'transparent',
 
-  // Estados
-  hover: '#7aa641',          // Verde Oliva Medio para hover
+  hover: '#7aa641',
 
-  // NUEVOS COLORES PARA EL TAB BAR Y COMPONENTES
-  tabBarBackground: '#f3f1e6', // Beige Suave
-  tabBarBorder: 'rgba(36, 52, 83, 0.1)', // Azul Marino con 10% opacidad
-  tabBarShadow: 'rgba(36, 52, 83, 0.1)',
+  // Tab bar
+  tabBarBackground: '#f7f0dd',
+  tabBarBorder: 'rgba(106, 114, 130, 0.15)',
+  tabBarShadow: 'rgba(0, 0, 0, 0.08)',
 
-  // Estados del tab bar
-  tabInactive: 'rgba(36, 52, 83, 0.6)', // textDisabled
-  tabActive: '#336c36', // primary
-  tabActiveBackground: 'rgba(51, 108, 54, 0.08)', // primary con 8% opacidad
-  tabHover: 'rgba(51, 108, 54, 0.05)', // primary con 5% opacidad
+  tabInactive: '#6a7282',
+  tabActive: '#336c36',
+  tabActiveBackground: 'rgba(51, 108, 54, 0.08)',
+  tabHover: 'rgba(51, 108, 54, 0.05)',
 
-  // Botón central flotante
-  floatingButton: '#336c36', // primary
-  floatingButtonHover: '#2a5a2d', // primary más oscuro
-  floatingButtonShadow: 'rgba(51, 108, 54, 0.3)', // primary con 30% opacidad
+  // Botón flotante
+  floatingButton: '#336c36',
+  floatingButtonHover: '#2a5a2d',
+  floatingButtonShadow: 'rgba(51, 108, 54, 0.3)',
   floatingButtonBorder: '#FFFFFF',
 
-  // Sombras y elevaciones
-  shadowLight: 'rgba(36, 52, 83, 0.08)', // Azul Marino 8%
-  shadowMedium: 'rgba(36, 52, 83, 0.15)', // Azul Marino 15%
-  shadowHeavy: 'rgba(36, 52, 83, 0.25)', // Azul Marino 25%
+  // Sombras
+  shadowLight: 'rgba(0, 0, 0, 0.08)',
+  shadowMedium: 'rgba(0, 0, 0, 0.10)',
+  shadowHeavy: 'rgba(0, 0, 0, 0.15)',
 
-  // Estados de interacción
-  pressed: 'rgba(51, 108, 54, 0.12)', // primary con 12% opacidad
-  focusRing: 'rgba(51, 108, 54, 0.4)', // primary con 40% opacidad
+  // Interacción
+  pressed: 'rgba(51, 108, 54, 0.12)',
+  focusRing: 'rgba(51, 108, 54, 0.4)',
 
-  // Fondos semitransparentes
-  overlay: 'rgba(36, 52, 83, 0.4)', // Azul Marino 40%
-  backdrop: 'rgba(243, 241, 230, 0.8)', // Beige Suave 80%
+  // Overlays
+  overlay: 'rgba(0, 0, 0, 0.45)',
+  backdrop: 'rgba(247, 240, 221, 0.8)',
 
-  // Colores de éxito y error (complementarios)
-  success: '#336c36', // primary - Verde Bosque
-  error: '#d93e2e',   // Rojo complementario al naranja
-  warning: '#e2772a', // secondary - Naranja Vibrante
-  info: '#243453',    // textPrimary - Azul Marino
+  // Estados
+  success: '#336c36',
+  error: '#d93e2e',
+  warning: '#e2772a',
+  info: '#4a5565',
 
-  errorLight: 'rgba(217, 62, 46, 0.1)', // Rojo claro para fondos de error
-  successLight: 'rgba(51, 108, 54, 0.1)', // Verde claro para fondos de éxito
-  border: 'rgba(36, 52, 83, 0.1)', // Azul Marino con 10% opacidad para bordes
+  errorLight: 'rgba(217, 62, 46, 0.1)',
+  successLight: 'rgba(51, 108, 54, 0.1)',
+  border: 'rgba(106, 114, 130, 0.15)',
   black: '#000000',
-  primaryLight: '#5a8f5a', // Verde Bosque Claro
+  primaryLight: '#5a8f5a',
   lightGray: '#d3d3d3',
   disabled: '#a9a9a9',
 
-  Surface: '#f3f1e6',
+  Surface: '#f7f0dd',
 
+  // Colores específicos de módulos/sync (Figma)
+  iconBg: 'rgba(245, 213, 200, 0.4)',       // fondo ícono módulo (salmón pastel)
+  badgeBg: 'rgba(107, 155, 124, 0.15)',      // fondo badge contador verde
+  badgeText: '#5a8a6b',                      // texto badge contador verde
 };
 
 export const Typography = {

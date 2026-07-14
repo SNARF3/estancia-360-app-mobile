@@ -28,19 +28,27 @@ export default function WeightRecordForm() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [isPickerVisible, setIsPickerVisible] = useState(false);
-  const { animalCode: paramCode } = useLocalSearchParams<{ animalCode: string }>();
+  const { animalCode: paramCode, from } = useLocalSearchParams<{ animalCode?: string; from?: string }>();
   const { formData, updateField, saveRecord, resetForm, loading, error, success } = useWeightRecord();
 
   useEffect(() => {
     if (paramCode) updateField('animalCode', paramCode.toUpperCase());
   }, [paramCode]);
 
+  const handleBack = () => {
+    if (from === 'registros') {
+      router.replace('/views/(tabs)/admin/Registros/RegistrosMenu' as any);
+    } else {
+      router.back();
+    }
+  };
+
   const handleSave = async () => {
     const ok = await saveRecord();
     if (ok) {
       Alert.alert('Pesaje registrado', `Peso de ${formData.weight} kg guardado correctamente.`, [
         { text: 'Nuevo pesaje', onPress: resetForm },
-        { text: 'Volver', onPress: () => router.back() },
+        { text: 'Volver', onPress: handleBack },
       ]);
     }
   };
@@ -49,7 +57,7 @@ export default function WeightRecordForm() {
     <KeyboardAvoidingView style={styles.mainContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>

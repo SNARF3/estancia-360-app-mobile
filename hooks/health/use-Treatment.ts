@@ -1,29 +1,33 @@
-// hooks/health/use-Treatment.ts
-
 import { useState } from 'react';
 import { getSession } from '../auth/use-Auth';
 import { registerTreatment } from '../db.sqlite/repositories/events';
+
+export interface MedEntry {
+    id: string;
+    medication: string;
+    dose: string;
+    durationDays: string;
+    withdrawalDays: string;
+}
 
 export interface TreatmentFormData {
     animalCode: string;
     eventDate: string;
     illness: string;
-    medication: string;
-    dose: string;
-    durationDays: string;
-    withdrawalDays: string;
+    meds: MedEntry[];
     responsible: string;
     notes: string;
+}
+
+function makeMed(): MedEntry {
+    return { id: Math.random().toString(36).slice(2), medication: '', dose: '', durationDays: '', withdrawalDays: '' };
 }
 
 const initial: TreatmentFormData = {
     animalCode: '',
     eventDate: new Date().toISOString().split('T')[0],
     illness: '',
-    medication: '',
-    dose: '',
-    durationDays: '',
-    withdrawalDays: '',
+    meds: [makeMed()],
     responsible: '',
     notes: '',
 };
@@ -34,12 +38,31 @@ export function useTreatment() {
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
-    const updateField = <K extends keyof TreatmentFormData>(
+    const updateField = <K extends keyof Omit<TreatmentFormData, 'meds'>>(
         field: K, value: TreatmentFormData[K]
     ) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         setError(null);
         setSuccess(false);
+    };
+
+    const updateMed = (id: string, field: keyof Omit<MedEntry, 'id'>, value: string) => {
+        setFormData(prev => ({
+            ...prev,
+            meds: prev.meds.map(m => m.id === id ? { ...m, [field]: value } : m),
+        }));
+        setError(null);
+    };
+
+    const addMed = () => {
+        setFormData(prev => ({ ...prev, meds: [...prev.meds, makeMed()] }));
+    };
+
+    const removeMed = (id: string) => {
+        setFormData(prev => ({
+            ...prev,
+            meds: prev.meds.length > 1 ? prev.meds.filter(m => m.id !== id) : prev.meds,
+        }));
     };
 
     const saveRecord = async (): Promise<boolean> => {
@@ -49,21 +72,22 @@ export function useTreatment() {
         if (!formData.animalCode.trim()) {
             setError('El código del animal es obligatorio.'); return false;
         }
-        if (!formData.medication.trim()) {
-            setError('El medicamento es obligatorio.'); return false;
-        }
         if (!formData.eventDate) {
             setError('La fecha es obligatoria.'); return false;
         }
 
-        const durationDays = formData.durationDays ? parseInt(formData.durationDays) : undefined;
-        const withdrawalDays = formData.withdrawalDays ? parseInt(formData.withdrawalDays) : undefined;
-
-        if (durationDays !== undefined && isNaN(durationDays)) {
-            setError('La duración debe ser un número entero.'); return false;
+        const filled = formData.meds.filter(m => m.medication.trim());
+        if (filled.length === 0) {
+            setError('Ingresá al menos un medicamento.'); return false;
         }
-        if (withdrawalDays !== undefined && isNaN(withdrawalDays)) {
-            setError('El período de retiro debe ser un número entero.'); return false;
+
+        for (const m of filled) {
+            if (m.durationDays && isNaN(parseInt(m.durationDays))) {
+                setError('La duración debe ser un número entero.'); return false;
+            }
+            if (m.withdrawalDays && isNaN(parseInt(m.withdrawalDays))) {
+                setError('El período de retiro debe ser un número entero.'); return false;
+            }
         }
 
         setLoading(true);
@@ -88,10 +112,12 @@ export function useTreatment() {
                 id_ranch_animal: animal.id,
                 event_date: new Date(formData.eventDate).toISOString(),
                 illness: formData.illness || undefined,
-                medication: formData.medication.trim(),
-                dose: formData.dose || undefined,
-                duration_days: durationDays,
-                withdrawal_days: withdrawalDays,
+                meds: filled.map(m => ({
+                    medication: m.medication.trim(),
+                    dose: m.dose.trim() || undefined,
+                    duration_days: m.durationDays ? parseInt(m.durationDays) : undefined,
+                    withdrawal_days: m.withdrawalDays ? parseInt(m.withdrawalDays) : undefined,
+                })),
                 responsible: formData.responsible || undefined,
                 notes: formData.notes || undefined,
             });
@@ -107,10 +133,10 @@ export function useTreatment() {
     };
 
     const resetForm = () => {
-        setFormData(initial);
+        setFormData({ ...initial, meds: [makeMed()] });
         setError(null);
         setSuccess(false);
     };
 
-    return { formData, updateField, saveRecord, resetForm, loading, error, success };
+    return { formData, updateField, updateMed, addMed, removeMed, saveRecord, resetForm, loading, error, success };
 }
