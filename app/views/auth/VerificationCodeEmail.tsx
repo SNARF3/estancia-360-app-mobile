@@ -87,7 +87,7 @@ export default function VerificationCodeEmail() {
       {/* BOTÓN DE ATRÁS */}
       <TouchableOpacity 
         style={styles.backButton} 
-        onPress={() => router.back()}
+        onPress={() => router.replace('/views/auth/Login' as any)}
       >
         <Ionicons name="arrow-back" size={34} color={Colors.primary} />
       </TouchableOpacity>

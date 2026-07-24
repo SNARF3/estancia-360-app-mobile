@@ -173,7 +173,7 @@ export default function QrScannerRanch() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: 'black' },
-    buttonPermission: { padding: 20, backgroundColor: Colors.primary, borderRadius: 10 },
+    buttonPermission: { padding: 20, backgroundColor: Colors.primaryButton, borderRadius: 10 },
     overlay: { flex: 1, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 50 },
     header: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 20 },
     closeButton: { position: 'absolute', left: 20, padding: 10 },

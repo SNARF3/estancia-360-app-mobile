@@ -1,12 +1,15 @@
 {
   "cli": {
-    "version": ">= 18.4.0",
+    "version": ">= 18.10.0",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -15,6 +18,9 @@
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
       }
     },
     "production": {
@@ -24,6 +30,18 @@
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EAS_SKIP_AUTO_FINGERPRINT": "1"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascApiKeyPath": "/Users/marvinmolloramirez/Estancia360/AuthKey_F5FZM5J4JJ.p8",
+        "ascApiKeyId": "F5FZM5J4JJ",
+        "ascApiKeyIssuerId": "aa7ec381-9b84-4939-9385-b5e0fe2e9e71"
       }
     }
   }

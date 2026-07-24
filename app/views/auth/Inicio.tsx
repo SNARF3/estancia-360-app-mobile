@@ -1,290 +1,177 @@
-import React, { useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
-  useWindowDimensions,
-  Animated,
-  SafeAreaView,
-  Image,
-} from 'react-native';
 import { useRouter } from 'expo-router';
-import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../../constants/theme';
-import { AnimatedLogo } from '../../../components/common/AnimatedLogo';
+import React, { useEffect, useRef } from 'react';
+import {
+    Animated,
+    Image,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../constants/theme';
 
 export default function Inicio() {
-  const router = useRouter();
-  const { height, width } = useWindowDimensions();
-  
-  const fadeAnim = new Animated.Value(0);
-  const slideAnim = new Animated.Value(50);
-  const scaleAnim = new Animated.Value(0.8);
+    const router = useRouter();
+    const { width, height } = useWindowDimensions();
+    const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(24)).current;
 
-  // Calcular dimensiones responsivas
-  const isSmallScreen = height < 700;
-  const isVerySmallScreen = height < 600;
-  const imageHeight = isVerySmallScreen ? height * 0.2 : isSmallScreen ? height * 0.22 : height * 0.25;
-  const imageWidth = Math.min(width * 0.85, 400);
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+            Animated.timing(slideAnim, { toValue: 0, duration: 650, useNativeDriver: true }),
+        ]).start();
+    }, []);
 
-  return (
-      <ScrollView 
-        contentContainerStyle={[
-          styles.container,
-          { 
-            minHeight: height,
-            paddingTop: isVerySmallScreen ? Spacing.sm : Spacing.xl,
-            paddingBottom: isSmallScreen ? Spacing.lg : Spacing.xxl
-          }
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Logo animado */}
-        <View style={[
-          styles.logoContainer,
-          { 
-            marginTop: isSmallScreen ? Spacing.md : Spacing.xl,
-            marginBottom: isSmallScreen ? Spacing.md : Spacing.lg 
-          }
-        ]}>
-          <AnimatedLogo size={isVerySmallScreen ? 100 : isSmallScreen ? 120 : 140} />
+    const cowImgHeight = width * (812 / 650);
+    const cowTop = insets.top + height * 0.25;
+
+    return (
+        <View style={[s.root, { backgroundColor: Colors.background }]}>
+            <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+
+            <Image
+                source={require('../../../assets/estancia360/vacas-sinfondo.png')}
+                style={[s.cowsBg, { left: 0, top: cowTop, width, height: cowImgHeight }]}
+                resizeMode="contain"
+            />
+
+            {/* Sección superior: logo + título */}
+            <Animated.View style={[s.top, {
+                paddingTop: insets.top + 20,
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+            }]}>
+                <Image
+                    source={require('../../../assets/estancia360/logo-inicio.png')}
+                    style={s.logo}
+                    resizeMode="contain"
+                />
+                <Text style={s.welcomeText}>Bienvenido a</Text>
+                <View style={s.titlePill}>
+                    <Text style={s.titleText}>Estancia360</Text>
+                </View>
+            </Animated.View>
+
+            {/* Sección inferior: subtítulo + botones */}
+            <Animated.View style={[s.bottom, {
+                paddingBottom: insets.bottom + 20,
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+            }]}>
+                <Text style={s.subtitle}>
+                    Transformando la ganadería boliviana{'\n'}con datos y sostenibilidad
+                </Text>
+
+                <TouchableOpacity
+                    style={s.btnPrimary}
+                    onPress={() => router.push('/views/auth/Login' as any)}
+                    activeOpacity={0.85}
+                >
+                    <Text style={s.btnPrimaryText}>Iniciar Sesión</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={s.btnSecondary}
+                    onPress={() => router.push('/views/auth/RegisterRole' as any)}
+                    activeOpacity={0.85}
+                >
+                    <Text style={s.btnSecondaryText}>Registrarse</Text>
+                </TouchableOpacity>
+            </Animated.View>
         </View>
-
-        {/* Título con fondo verde y letras blancas */}
-        <Animated.View 
-          style={[
-            styles.titleContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-              marginBottom: isSmallScreen ? Spacing.sm : Spacing.md
-            }
-          ]}
-        >
-          <Text style={[
-            styles.welcomeText,
-            { fontSize: isSmallScreen ? 18 : 22 }
-          ]}>
-            Bienvenido a
-          </Text>
-          <View style={[
-            styles.titleBackground,
-            { 
-              paddingHorizontal: isSmallScreen ? Spacing.xs : Spacing.sm,
-              paddingVertical: isSmallScreen ? Spacing.xs : Spacing.sm 
-            }
-          ]}>
-            <Text style={[
-              styles.title,
-              { fontSize: isSmallScreen ? 28 : 36 }
-            ]}>
-              Estancia360
-            </Text>
-          </View>
-        </Animated.View>
-
-        {/* Descripción */}
-        <Animated.View 
-          style={[
-            styles.textContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-              marginBottom: isSmallScreen ? Spacing.lg : Spacing.xl,
-              paddingHorizontal: Spacing.md
-            }
-          ]}
-        >
-          <Text style={[
-            styles.subtitle,
-            { 
-              fontSize: isSmallScreen ? 16 : 18,
-              lineHeight: isSmallScreen ? 22 : 24
-            }
-          ]}>
-            Transformando la ganadería boliviana con datos y sostenibilidad
-          </Text>
-        </Animated.View>
-
-        {/* Imagen de vacas con animación */}
-        <Animated.View 
-          style={[
-            styles.imageContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }],
-              width: imageWidth,
-              height: imageHeight,
-              marginBottom: isSmallScreen ? Spacing.xl : Spacing.xxl
-            }
-          ]}
-        >
-          {/* Esta línea debes reemplazarla con tu imagen real */}
-          <View style={styles.cowsImagePlaceholder}>
-              <Image
-            source={require('../../../assets/estancia360/vacas1.jpeg')}
-            style={styles.cowsImage}
-            resizeMode="cover"
-          />
-          </View>
-        </Animated.View>
-
-        {/* Botones más abajo */}
-        <View style={[
-          styles.buttonsContainer,
-          { 
-            gap: isSmallScreen ? Spacing.sm : Spacing.md,
-            marginTop: 'auto' // Esto empuja los botones hacia abajo
-          }
-        ]}>
-          <TouchableOpacity
-            style={[styles.button, styles.primaryButton]}
-            onPress={() => router.push('/views/auth/Login' as any)}
-          >
-            <Text style={[
-              styles.primaryButtonText,
-              { fontSize: isSmallScreen ? 16 : 18 }
-            ]}>
-              Iniciar Sesión
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.button, styles.secondaryButton]}
-            onPress={() => router.push('/views/auth/RegisterRole' as any)}
-          >
-            <Text style={[
-              styles.secondaryButtonText,
-              { fontSize: isSmallScreen ? 16 : 18 }
-            ]}>
-              Registrarse
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-  );
+    );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    flexGrow: 1,
-    backgroundColor: Colors.background,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  logoContainer: {
-    alignItems: 'center',
-  },
-  titleContainer: {
-    alignItems: 'center',
-  },
-  welcomeText: {
-    fontFamily: Typography.h2.fontFamily,
-    fontWeight: Typography.h2.fontWeight,
-    lineHeight: Typography.h2.lineHeight,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
-  },
-  titleBackground: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.lg,
-    ...Shadows.card,
-  },
-  title: {
-    fontFamily: Typography.h1.fontFamily,
-    fontWeight: Typography.h1.fontWeight,
-    lineHeight: Typography.h1.lineHeight,
-    color: Colors.white,
-    textAlign: 'center',
-  },
-  textContainer: {
-    alignItems: 'center',
-  },
-  subtitle: {
-    fontFamily: Typography.body.fontFamily,
-    fontWeight: Typography.body.fontWeight,
-    lineHeight: Typography.body.lineHeight,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  imageContainer: {
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...Shadows.card,
-  },
-  cowsImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: Colors.primary + '40', // Color primario con transparencia
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  placeholderText: {
-    color: Colors.white,
-    fontFamily: Typography.body.fontFamily,
-  },
-  cowsImage: {
-    width: '100%',
-    height: '100%',
-  },
-  buttonsContainer: {
-    width: '100%',
-    marginBottom: Spacing.xl,
-  },
-  button: {
-    width: '100%',
-    height: 58,
-    borderRadius: BorderRadius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Shadows.card,
-  },
-  primaryButton: {
-    backgroundColor: Colors.primary,
-  },
-  secondaryButton: {
-    backgroundColor: Colors.white,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-  },
-  primaryButtonText: {
-    fontFamily: Typography.button.fontFamily,
-    fontWeight: Typography.button.fontWeight,
-    lineHeight: Typography.button.lineHeight,
-    color: Colors.white,
-  },
-  secondaryButtonText: {
-    fontFamily: Typography.button.fontFamily,
-    fontWeight: Typography.button.fontWeight,
-    lineHeight: Typography.button.lineHeight,
-    color: Colors.primary,
-  },
+const s = StyleSheet.create({
+    root: {
+        flex: 1,
+    },
+    cowsBg: {
+        position: 'absolute',
+    },
+    top: {
+        alignItems: 'center',
+        paddingHorizontal: Spacing.lg,
+        zIndex: 1,
+    },
+    logo: {
+        width: 168,
+        height: 168,
+        marginBottom: 12,
+        opacity: 0.9,
+    },
+    welcomeText: {
+        fontSize: 36,
+        fontWeight: '800',
+        color: '#000',
+        fontFamily: Typography.h1.fontFamily,
+        textAlign: 'center',
+        marginBottom: 10,
+    },
+    titlePill: {
+        backgroundColor: Colors.primary,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: BorderRadius.lg,
+        ...Shadows.card,
+    },
+    titleText: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: Colors.white,
+        fontFamily: Typography.h1.fontFamily,
+    },
+    bottom: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingHorizontal: Spacing.lg,
+        gap: Spacing.sm,
+        zIndex: 1,
+    },
+    subtitle: {
+        fontSize: 15,
+        color: 'rgba(0,0,0,0.6)',
+        textAlign: 'center',
+        lineHeight: 22,
+        marginBottom: Spacing.sm,
+        fontFamily: Typography.body.fontFamily,
+    },
+    btnPrimary: {
+        width: '100%',
+        height: 58,
+        backgroundColor: Colors.primary,
+        borderRadius: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...Shadows.floatingButton,
+    },
+    btnPrimaryText: {
+        color: '#e8e8e8',
+        fontSize: 16,
+        fontWeight: '600',
+        fontFamily: Typography.button.fontFamily,
+    },
+    btnSecondary: {
+        width: '100%',
+        height: 58,
+        backgroundColor: Colors.white,
+        borderRadius: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...Shadows.card,
+    },
+    btnSecondaryText: {
+        color: '#1a1a1a',
+        fontSize: 16,
+        fontWeight: '600',
+        fontFamily: Typography.button.fontFamily,
+    },
 });

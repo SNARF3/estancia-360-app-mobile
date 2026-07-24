@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     // Botón de Escaneo
     actionContainer: { paddingHorizontal: Spacing.lg, marginBottom: Spacing.lg },
     scanButton: {
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.primaryButton,
         borderRadius: 16,
         padding: Spacing.md,
         flexDirection: 'row',

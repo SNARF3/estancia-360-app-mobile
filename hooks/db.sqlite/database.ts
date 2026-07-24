@@ -51,6 +51,7 @@ export const EVENT_TYPES = {
   TRATAMIENTO: 12,
   INCIDENTE: 13,
   ENTRADA_ENGORDE: 14,
+  CAMBIO_PROCESO: 15,
 } as const;
 
 export const RANCH_ROLES = {
@@ -147,6 +148,15 @@ const DDL_STATEMENTS = [
     id              INTEGER PRIMARY KEY,
     name            TEXT    NOT NULL,
     is_active       INTEGER NOT NULL DEFAULT 1
+  )`,
+
+  // ── Clases de animales (catálogo gestionado por el ganadero) ─────────────
+  `CREATE TABLE IF NOT EXISTS animal_classes (
+    id                        INTEGER PRIMARY KEY,
+    name                      TEXT    NOT NULL,
+    sex                       TEXT    CHECK(sex IN ('M','F','any')),
+    default_productive_status INTEGER NOT NULL DEFAULT 1,
+    is_active                 INTEGER NOT NULL DEFAULT 1
   )`,
 
   // ── Animales ──────────────────────────────────────────────────────────────
@@ -509,8 +519,7 @@ const DDL_STATEMENTS = [
 
   `CREATE INDEX IF NOT EXISTS idx_queue_table ON sync_queue(table_name, record_id)`,
 
-  // Semilla de razas por defecto
-  `INSERT OR IGNORE INTO animal_breeds (id, name, is_active) VALUES (1, 'VACA', 1)`,
+  // Sin semilla de razas — el ganadero las gestiona dentro de la app
 ];
 
 // ─── Inicialización ───────────────────────────────────────────────────────────
@@ -527,6 +536,29 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
   await db.withTransactionAsync(async () => {
     for (const stmt of DDL_STATEMENTS) {
       await db.execAsync(stmt);
+    }
+  });
+
+  // Seed clases por defecto (INSERT OR IGNORE — no sobreescribe si ya existen)
+  const CLASS_SEEDS: [number, string, string, number][] = [
+    [1,  'Ternera',                  'F',   1],
+    [2,  'Ternero Macho Entero',     'M',   1],
+    [3,  'Ternero Macho Castrado',   'M',   1],
+    [4,  'Hembra Destetada',         'F',   2],
+    [5,  'Macho Entero Destetado',   'M',   2],
+    [6,  'Macho Castrado Destetado', 'M',   2],
+    [7,  'Vaquilla',                 'F',   2],
+    [8,  'Vaca',                     'F',   1],
+    [9,  'Hembra Esterilizada',      'F',   1],
+    [10, 'Toro',                     'M',   1],
+    [11, 'Novillo',                  'M',   3],
+  ];
+  await db.withTransactionAsync(async () => {
+    for (const [id, name, sex, ps] of CLASS_SEEDS) {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO animal_classes (id, name, sex, default_productive_status, is_active) VALUES (?,?,?,?,1)`,
+        [id, name, sex, ps]
+      );
     }
   });
 

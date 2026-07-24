@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance, AxiosResponse } from 'axios';
 
 
-const API_BASE_URL = 'https://estancia-360-app-test.onrender.com/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://estancia-360-app.onrender.com/api';
 
 export interface ApiResponse<T = any> {
   success?: boolean;

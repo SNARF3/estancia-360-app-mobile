@@ -60,7 +60,6 @@ export async function saveSession(params: SessionParams): Promise<void> {
         params.id_ranch.toString(),
         params.idUser.toString(),
         params.ranch_role,
-        params.idRole ? params.ranch_role : params.idRole, // Mapeo de rol
         params.ranch_name,
         params.fullname,
         JSON.stringify(params.production_types),
@@ -112,6 +111,23 @@ export async function getUserRole(): Promise<number | null> {
 
 export async function getToken(): Promise<string | null> {
   return AsyncStorage.getItem('access_token');
+}
+
+// ─── saveCredentials / getCredentials ────────────────────────────────────────
+// Guardan email+password para poder re-autenticar automáticamente antes de sync.
+// Se llaman desde use-UserLoginLogic al hacer login exitoso.
+
+export async function saveCredentials(email: string, password: string): Promise<void> {
+  await AsyncStorage.setItem('sync_credentials', JSON.stringify({ email, password }));
+}
+
+export async function getCredentials(): Promise<{ email: string; password: string } | null> {
+  try {
+    const raw = await AsyncStorage.getItem('sync_credentials');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── getUserData ──────────────────────────────────────────────────────────────

@@ -117,7 +117,7 @@ export default function RegisterScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+      <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/views/auth/RegisterRole' as any)}>
         <Ionicons name="arrow-back" size={34} color={Colors.primary} />
       </TouchableOpacity>
 

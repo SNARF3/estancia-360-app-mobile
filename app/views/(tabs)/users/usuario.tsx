@@ -1,399 +1,402 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
-import React from 'react';
-import {
-  Alert,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native';
-import { showMessage } from 'react-native-flash-message';
-import { HeaderText } from '../../../../components/common/HeaderText';
-import { ScreenContainer } from '../../../../components/layout/ScreenContainer';
-import { Colors, Spacing, Typography } from '../../../../constants/theme';
-
+import NetInfo from '@react-native-community/netinfo';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { useAuth } from '../../../../hooks/auth/use-Auth';
+import React, { useCallback, useState } from 'react';
+import {
+    Alert,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BarnIcon } from '../../../../components/icons/AppIcons';
+import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../constants/theme';
+import { getUserData, logout, SessionParams } from '../../../../hooks/auth/use-Auth';
+import { getDb } from '../../../../hooks/db.sqlite/db-pool';
+
+const ROLE_LABELS: Record<number, string> = {
+    1: 'Ganadero',
+    2: 'Trabajador',
+    3: 'Administrador',
+};
 
 export default function UsuarioScreen() {
-  const { getUserRole, userData, checkAuthStatus } = useAuth();
-  const [roleName, setRoleName] = useState('Usuario');
+    const insets = useSafeAreaInsets();
+    const [userData, setUserData] = useState<SessionParams | null>(null);
+    const [roleName, setRoleName] = useState('Usuario');
+    const [animalCount, setAnimalCount] = useState<number | null>(null);
+    const [hectareas, setHectareas] = useState<number | null>(null);
+    const [isOnline, setIsOnline] = useState(true);
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadData = async () => {
-        await checkAuthStatus();
+    useFocusEffect(
+        useCallback(() => {
+            getUserData().then((data) => {
+                if (!data) return;
+                setUserData(data);
+                setRoleName(ROLE_LABELS[data.ranch_role] ?? 'Usuario');
+            });
 
-        if (userData?.user?.role?.name) {
-          setRoleName(userData.user.role.name);
-        } else {
-          // Fallback por si no se cargó la data completa
-          const role = await getUserRole();
-          switch (role) {
-            case 1: setRoleName('Super Admin'); break;
-            case 2: setRoleName('Administrador'); break;
-            case 3: setRoleName('Trabajador'); break;
-            default: setRoleName('Usuario');
-          }
-        }
-      };
+            getDb().then(async db => {
+                const animals = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM ranch_animals WHERE status = 1');
+                setAnimalCount(animals?.count ?? 0);
+                const ha = await db.getFirstAsync<{ total: number }>('SELECT COALESCE(SUM(area_hectares), 0) as total FROM ranch_pastures');
+                setHectareas(ha?.total ?? 0);
+            }).catch(() => {});
 
-      loadData();
-    }, [userData])
-  );
-
-  const userStats = [
-    { icon: 'calendar', label: 'Reservas Activas', value: '3' },
-    { icon: 'star', label: 'Puntuación', value: '4.8' },
-    { icon: 'time', label: 'Miembro desde', value: '2024' },
-  ];
-
-  const menuSections = [
-    {
-      title: 'Mi Cuenta',
-      items: [
-        { icon: 'person', label: 'Perfil', color: Colors.primary },
-        { icon: 'notifications', label: 'Notificaciones', color: Colors.secondary },
-        { icon: 'lock-closed', label: 'Privacidad', color: Colors.accent },
-      ],
-    },
-    {
-      title: 'Mis Reservas',
-      items: [
-        { icon: 'calendar', label: 'Historial', color: Colors.primary },
-        { icon: 'heart', label: 'Favoritos', color: Colors.secondary },
-        { icon: 'card', label: 'Métodos de Pago', color: Colors.accent },
-      ],
-    },
-    {
-      title: 'Soporte',
-      items: [
-        { icon: 'help-circle', label: 'Ayuda', color: Colors.textPrimary },
-        { icon: 'chatbubble', label: 'Soporte', color: Colors.secondary },
-        { icon: 'information', label: 'Acerca de', color: Colors.accent },
-      ],
-    },
-  ];
-
-  const handleLogout = async () => {
-    // Mostrar confirmación
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro que deseas cerrar sesión?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Cerrar Sesión',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Limpiar TODOS los datos de sesión
-              const keysToRemove = [
-                'userToken',
-                'userData',
-                'selectedRoleId',
-                'authToken',
-                'refreshToken',
-                'userProfile',
-                'userPreferences'
-              ];
-
-              // Eliminar cada item individualmente
-              for (const key of keysToRemove) {
-                await AsyncStorage.removeItem(key);
-              }
-
-              // También eliminar cualquier otro dato que pueda existir
-              // usando getAllKeys para asegurarnos
-              const allKeys = await AsyncStorage.getAllKeys();
-              const authRelatedKeys = allKeys.filter(key =>
-                key.includes('token') ||
-                key.includes('auth') ||
-                key.includes('user') ||
-                key.includes('session')
-              );
-
-              for (const key of authRelatedKeys) {
-                await AsyncStorage.removeItem(key);
-              }
-
-              console.log('Sesión cerrada. Datos eliminados.');
-
-              // Mostrar mensaje de éxito
-              showMessage({
-                message: 'Sesión cerrada',
-                description: 'Has cerrado sesión exitosamente.',
-                type: 'success',
-                duration: 3000,
-                floating: true,
-              });
-
-              // Redirigir al login después de un breve delay
-              setTimeout(() => {
-                // Usar replace para no poder volver atrás
-                router.replace('/views/auth/Inicio');
-              }, 500);
-
-            } catch (error) {
-              console.error('Error al cerrar sesión:', error);
-
-              // Mostrar mensaje de error
-              showMessage({
-                message: 'Error',
-                description: 'No se pudo cerrar sesión. Intenta nuevamente.',
-                type: 'danger',
-                duration: 3000,
-                floating: true,
-              });
-            }
-          },
-        },
-      ],
-      { cancelable: true }
+            const unsub = NetInfo.addEventListener(state => {
+                setIsOnline(!!state.isConnected);
+            });
+            return unsub;
+        }, [])
     );
-  };
 
-  return (
-    <ScreenContainer scrollable={true}>
-      {/* Header del Usuario */}
-      <View style={styles.userHeader}>
-        <View style={styles.avatarContainer}>
-          <View style={styles.avatar}>
-            <Ionicons name="person" size={40} color={Colors.textLight} />
-          </View>
-          <View style={styles.verifiedBadge}>
-            <Ionicons name="checkmark" size={16} color={Colors.textLight} />
-          </View>
-        </View>
-        <HeaderText variant="h1" style={styles.userName}>
-          {userData?.user?.fullname || userData?.name || 'Usuario'}
-        </HeaderText>
-        <Text style={styles.userEmail}>
-          {userData?.user?.email || userData?.email || 'usuario@email.com'}
-        </Text>
-        <View style={styles.userBadge}>
-          <Text style={styles.userBadgeText}>{roleName}</Text>
-        </View>
-      </View>
+    const handleLogout = () => {
+        Alert.alert(
+            'Cerrar Sesión',
+            '¿Estás seguro que deseas cerrar sesión?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Cerrar Sesión',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await logout();
+                    },
+                },
+            ]
+        );
+    };
 
-      {/* Estadísticas del Usuario */}
-      <View style={styles.statsSection}>
-        <View style={styles.statsGrid}>
-          {userStats.map((stat, index) => (
-            <View key={index} style={styles.statItem}>
-              <View style={styles.statIcon}>
-                <Ionicons name={stat.icon as any} size={20} color={Colors.primary} />
-              </View>
-              <Text style={styles.statValue}>{stat.value}</Text>
-              <Text style={styles.statLabel}>{stat.label}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
+    const handleClearTestData = () => {
+        Alert.alert(
+            'Borrar datos de prueba',
+            'Esto eliminará TODOS los animales y sus registros. Los potreros y lotes se conservan. ¿Continuar?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Borrar todo',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const db = await getDb();
+                            const tables = [
+                                'weight_records', 'rearing_selections', 'fattening_entries',
+                                'feed_records', 'vaccinations', 'treatments', 'health_incidents',
+                                'breeding_services', 'gestation_diagnoses', 'parturitions', 'weanings',
+                                'animal_declared_history', 'animal_events', 'ranch_animals',
+                            ];
+                            for (const t of tables) {
+                                await db.runAsync(`DELETE FROM ${t}`);
+                            }
+                            setAnimalCount(0);
+                        } catch (e: any) {
+                            Alert.alert('Error', e.message ?? 'No se pudieron borrar los datos.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
 
-      {/* Menú de Opciones */}
-      <View style={styles.menuContainer}>
-        {menuSections.map((section, sectionIndex) => (
-          <View key={sectionIndex} style={styles.menuSection}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <View style={styles.menuItems}>
-              {section.items.map((item, itemIndex) => (
-                <TouchableOpacity key={itemIndex} style={styles.menuItem}>
-                  <View style={[styles.menuIcon, { backgroundColor: item.color }]}>
-                    <Ionicons name={item.icon as any} size={20} color={Colors.textLight} />
-                  </View>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
-                  <Ionicons name="chevron-forward" size={20} color={Colors.textDisabled} />
+    return (
+        <View style={styles.root}>
+            <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
+
+            {/* Header */}
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+                <View style={[styles.statusBadge, isOnline ? styles.onlineBadge : styles.offlineBadge]}>
+                    <Text style={[styles.statusText, isOnline ? styles.onlineText : styles.offlineText]}>
+                        {isOnline ? 'Online' : 'Offline'}
+                    </Text>
+                </View>
+                <TouchableOpacity style={styles.salirBtn} onPress={handleLogout} activeOpacity={0.75}>
+                    <Text style={styles.salirText}>Salir</Text>
                 </TouchableOpacity>
-              ))}
             </View>
-          </View>
-        ))}
 
-        {/* Cerrar Sesión - Ahora con funcionalidad */}
-        <TouchableOpacity
-          style={styles.logoutButton}
-          onPress={handleLogout}
-          activeOpacity={0.7}
-        >
-          <View style={styles.logoutIconContainer}>
-            <Ionicons name="log-out" size={24} color={Colors.error} />
-          </View>
-          <Text style={styles.logoutText}>Cerrar Sesión</Text>
-        </TouchableOpacity>
-      </View>
-    </ScreenContainer>
-  );
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+            >
+                {/* Avatar + nombre + rol */}
+                <View style={styles.profileHeader}>
+                    <View style={styles.avatar}>
+                        <Ionicons name="person" size={44} color={Colors.white} />
+                    </View>
+                    <Text style={styles.userName}>{userData?.fullname || 'Usuario'}</Text>
+                    <Text style={styles.userRole}>{roleName}</Text>
+                </View>
+
+                {/* Tarjeta de estancia */}
+                {userData?.ranch_name && (
+                    <View style={styles.ranchCard}>
+                        <View style={styles.ranchTop}>
+                            <View style={styles.ranchIconWrap}>
+                                <BarnIcon size={36} color={Colors.secondary} />
+                            </View>
+                            <View style={styles.ranchInfo}>
+                                <Text style={styles.ranchLabel}>Estancia</Text>
+                                <Text style={styles.ranchName}>{userData.ranch_name}</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.statsRow}>
+                            <View style={styles.statChip}>
+                                <Ionicons name="paw" size={18} color={Colors.primary} />
+                                <View>
+                                    <Text style={styles.statLabel}>Animales</Text>
+                                    <Text style={styles.statValue}>
+                                        {animalCount !== null ? animalCount : '---'}
+                                    </Text>
+                                </View>
+                            </View>
+                            <View style={styles.statChip}>
+                                <Ionicons name="leaf" size={18} color={Colors.accent} />
+                                <View>
+                                    <Text style={styles.statLabel}>Hectáreas</Text>
+                                    <Text style={styles.statValue}>
+                                        {hectareas !== null ? hectareas.toFixed(1) : '---'}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+                )}
+
+                {/* Información personal */}
+                <Text style={styles.sectionTitle}>Información personal</Text>
+
+                <View style={styles.infoCard}>
+                    {[
+                        { label: 'Nombre completo', value: userData?.fullname || '---' },
+                        { label: 'Email', value: userData?.email || '---' },
+                        { label: 'Teléfono', value: '---' },
+                        { label: 'Rol', value: roleName },
+                    ].map((row, i, arr) => (
+                        <View
+                            key={row.label}
+                            style={[styles.infoRow, i < arr.length - 1 && styles.infoRowBorder]}
+                        >
+                            <Text style={styles.infoLabel}>{row.label}</Text>
+                            <Text style={styles.infoValue} numberOfLines={1}>{row.value}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Borrar datos de prueba */}
+                <TouchableOpacity style={styles.dangerBtn} onPress={handleClearTestData} activeOpacity={0.8}>
+                    <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                    <Text style={styles.dangerBtnText}>Borrar datos de prueba</Text>
+                </TouchableOpacity>
+
+                <Text style={styles.version}>Estancia360 v2.0</Text>
+                <View style={{ height: Spacing.tabBarHeight + 20 }} />
+            </ScrollView>
+        </View>
+    );
 }
 
 const styles = StyleSheet.create({
-  userHeader: {
-    alignItems: 'center',
-    marginBottom: Spacing.xl,
-    paddingVertical: Spacing.lg,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: Spacing.md,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: Colors.background,
-  },
-  userName: {
-    marginBottom: Spacing.xs,
-    textAlign: 'center',
-  },
-  userEmail: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.md,
-  },
-  userBadge: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.xs,
-    borderRadius: 20,
-  },
-  userBadgeText: {
-    ...Typography.overline,
-    color: Colors.textLight,
-    fontWeight: '600',
-  },
-  statsSection: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    padding: Spacing.lg,
-    marginBottom: Spacing.xl,
-    shadowColor: Colors.textPrimary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  statValue: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-    marginBottom: 2,
-  },
-  statLabel: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-  },
-  menuContainer: {
-    gap: Spacing.lg,
-  },
-  menuSection: {
-    backgroundColor: Colors.white,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: Colors.textPrimary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  sectionTitle: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-    padding: Spacing.lg,
-    paddingBottom: Spacing.md,
-    backgroundColor: Colors.white,
-  },
-  menuItems: {
-    backgroundColor: Colors.white,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.textDisabled + '20',
-  },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacing.md,
-  },
-  menuLabel: {
-    ...Typography.body,
-    color: Colors.textPrimary,
-    flex: 1,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.white,
-    padding: Spacing.lg,
-    borderRadius: 20,
-    shadowColor: Colors.textPrimary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-    gap: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.error + '30',
-  },
-  logoutIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.error + '10',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoutText: {
-    ...Typography.body,
-    color: Colors.error,
-    fontWeight: '600',
-  },
+    root: {
+        flex: 1,
+        backgroundColor: Colors.background,
+    },
+
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.lg,
+        paddingBottom: Spacing.md,
+    },
+    statusBadge: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.xxl,
+        borderWidth: 1.5,
+    },
+    onlineBadge: { borderColor: Colors.primary, backgroundColor: Colors.successLight },
+    offlineBadge: { borderColor: Colors.textSecondary, backgroundColor: 'transparent' },
+    statusText: { fontSize: 13, fontFamily: Typography.fontPrimary, fontWeight: '700' },
+    onlineText: { color: Colors.primary },
+    offlineText: { color: Colors.textSecondary },
+    salirBtn: {
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.xxl,
+        borderWidth: 1.5,
+        borderColor: Colors.textSecondary,
+    },
+    salirText: {
+        fontSize: 13,
+        fontFamily: Typography.fontPrimary,
+        fontWeight: '700',
+        color: Colors.textSecondary,
+    },
+
+    scrollContent: {
+        paddingHorizontal: Spacing.lg,
+        paddingTop: Spacing.sm,
+    },
+
+    // ── Perfil ────────────────────────────────────────────────────────────────
+    profileHeader: {
+        alignItems: 'center',
+        paddingVertical: Spacing.xl,
+    },
+    avatar: {
+        width: 96,
+        height: 96,
+        borderRadius: 48,
+        backgroundColor: Colors.primaryButton,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: Spacing.md,
+        ...Shadows.floatingButton,
+    },
+    userName: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 26,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    userRole: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 15,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+    },
+
+    // ── Tarjeta estancia ──────────────────────────────────────────────────────
+    ranchCard: {
+        backgroundColor: Colors.white,
+        borderRadius: BorderRadius.xl,
+        padding: Spacing.lg,
+        marginBottom: Spacing.xl,
+        ...Shadows.card,
+        gap: Spacing.md,
+    },
+    ranchTop: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.md,
+    },
+    ranchIconWrap: {
+        width: 56,
+        height: 56,
+        borderRadius: BorderRadius.md,
+        backgroundColor: Colors.iconBg,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    ranchInfo: { flex: 1 },
+    ranchLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 12,
+        color: Colors.textSecondary,
+    },
+    ranchName: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+    },
+    statsRow: {
+        flexDirection: 'row',
+        gap: Spacing.md,
+    },
+    statChip: {
+        flex: 1,
+        backgroundColor: Colors.iconBg,
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+    },
+    statLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 11,
+        color: Colors.textSecondary,
+    },
+    statValue: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 20,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+    },
+
+    // ── Información personal ──────────────────────────────────────────────────
+    sectionTitle: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 15,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+        marginBottom: Spacing.md,
+    },
+    infoCard: {
+        backgroundColor: Colors.white,
+        borderRadius: BorderRadius.xl,
+        overflow: 'hidden',
+        marginBottom: Spacing.xl,
+        ...Shadows.card,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: 16,
+    },
+    infoRowBorder: {
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+    },
+    infoLabel: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 13,
+        color: Colors.textSecondary,
+    },
+    infoValue: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 14,
+        fontWeight: '600',
+        color: Colors.textPrimary,
+        maxWidth: '60%',
+        textAlign: 'right',
+    },
+
+    // ── Acciones ──────────────────────────────────────────────────────────────
+    dangerBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.lg,
+        borderWidth: 1,
+        borderColor: Colors.error + '40',
+        backgroundColor: Colors.white,
+        marginBottom: Spacing.xl,
+        ...Shadows.card,
+    },
+    dangerBtnText: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.error,
+    },
+
+    version: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 12,
+        color: Colors.textDisabled,
+        textAlign: 'center',
+        marginBottom: Spacing.md,
+    },
 });

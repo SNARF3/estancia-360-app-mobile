@@ -163,7 +163,7 @@ export default function RegisterRanchScreen() {
     useEffect(() => {
         if (!rawUserData) {
             Alert.alert('Error crítico', 'No se recibieron datos del usuario.');
-            router.back();
+            router.replace('/views/auth/Register' as any);
             return;
         }
         fetchCountries();
@@ -244,7 +244,7 @@ export default function RegisterRanchScreen() {
 
     return (
         <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/views/auth/Register' as any)}>
                 <Ionicons name="arrow-back" size={34} color={Colors.primary} />
             </TouchableOpacity>
 
@@ -326,6 +326,6 @@ const styles = StyleSheet.create({
     modalTitle: { ...Typography.h3, textAlign: 'center', marginBottom: Spacing.lg, color: Colors.primary },
     optionItem: { paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border },
     optionText: { ...Typography.body, textAlign: 'left', color: Colors.textPrimary },
-    doneButton: { backgroundColor: Colors.primary, borderRadius: 12, padding: Spacing.md, marginTop: Spacing.md, alignItems: 'center' },
+    doneButton: { backgroundColor: Colors.primaryButton, borderRadius: 12, padding: Spacing.md, marginTop: Spacing.md, alignItems: 'center' },
     doneButtonText: { ...Typography.body, fontWeight: 'bold', color: '#fff' },
 });

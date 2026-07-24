@@ -54,7 +54,7 @@ export const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
       ]}
     >
       <Image
-        source={require('../../assets/estancia360/logo.png')}
+        source={require('../../assets/estancia360/icon-light.png')}
         style={[
           styles.logo,
           {

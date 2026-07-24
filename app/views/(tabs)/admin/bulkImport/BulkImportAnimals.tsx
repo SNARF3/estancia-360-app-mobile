@@ -3,20 +3,25 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Alert,
     Animated,
     FlatList,
-    Platform,
+    Modal,
+    ScrollView,
     StatusBar,
     StyleSheet,
     Text,
     TouchableOpacity,
     View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
-import { useBulkImportAnimals, type ValidatedAnimalRow } from '../../../../../hooks/Animals/offline/use-BulkImport';
+import { getSession } from '../../../../../hooks/auth/use-Auth';
+import { useBulkImportAnimals, type UnresolvedBreed, type UnresolvedClass, type UnresolvedLot, type ValidatedAnimalRow } from '../../../../../hooks/Animals/offline/use-BulkImport';
+import { getDb } from '../../../../../hooks/db.sqlite/db-pool';
+import { newId, now } from '../../../../../hooks/db.sqlite/db-utils';
 
 // ─── Helpers de display ───────────────────────────────────────────────────────
 
@@ -215,6 +220,7 @@ function PreviewScreen({
     onLoad: () => void;
     onCancel: () => void;
 }) {
+    const insets = useSafeAreaInsets();
     const handleLoad = () => {
         if (validCount === 0) {
             Alert.alert('Sin datos válidos', 'No hay filas válidas para cargar. Corregí el archivo e intentá de nuevo.');
@@ -276,7 +282,7 @@ function PreviewScreen({
             />
 
             {/* Botones fijos abajo */}
-            <View style={styles.previewFooter}>
+            <View style={[styles.previewFooter, { paddingBottom: insets.bottom + 8 }]}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
                     <Text style={styles.cancelBtnTxt}>Cancelar</Text>
                 </TouchableOpacity>
@@ -285,6 +291,480 @@ function PreviewScreen({
                     <Text style={styles.loadBtnTxt}>CARGAR {validCount} ANIMALES</Text>
                 </TouchableOpacity>
             </View>
+        </View>
+    );
+}
+
+// ─── Pantalla de verificación de clases ──────────────────────────────────────
+
+const PS_OPTIONS = [
+    { val: 1, label: 'Cría' },
+    { val: 2, label: 'Recría' },
+    { val: 3, label: 'Engorde' },
+] as const;
+
+const SEX_OPTIONS = [
+    { val: 'M', label: 'Macho' },
+    { val: 'F', label: 'Hembra' },
+    { val: 'any', label: 'Ambos' },
+] as const;
+
+function ClassCheckScreen({
+    unresolvedClasses,
+    onResolve,
+    onSkip,
+    onContinue,
+}: {
+    unresolvedClasses: UnresolvedClass[];
+    onResolve: (name: string, id: number, productive_status: number) => void;
+    onSkip: (name: string) => void;
+    onContinue: (resolved: UnresolvedClass[]) => void;
+}) {
+    const insets = useSafeAreaInsets();
+    const [local, setLocal] = useState(
+        unresolvedClasses.map(c => ({ ...c, sex: 'any' as 'M' | 'F' | 'any', creating: false }))
+    );
+
+    const update = (name: string, field: string, value: any) =>
+        setLocal(prev => prev.map(c => c.name.toLowerCase() === name.toLowerCase() ? { ...c, [field]: value } : c));
+
+    const handleCreate = async (rawName: string) => {
+        const item = local.find(c => c.name.toLowerCase() === rawName.toLowerCase());
+        if (!item) return;
+        update(rawName, 'creating', true);
+        try {
+            const db = await getDb();
+            const result = await db.runAsync(
+                `INSERT INTO animal_classes (name, sex, default_productive_status, is_active) VALUES (?,?,?,1)`,
+                [rawName, item.sex === 'any' ? null : item.sex, item.productive_status]
+            );
+            const createdId = result.lastInsertRowId as number;
+            onResolve(rawName, createdId, item.productive_status);
+            setLocal(prev => prev.map(c =>
+                c.name.toLowerCase() === rawName.toLowerCase() ? { ...c, id: createdId, creating: false } : c
+            ));
+        } catch (e: any) {
+            Alert.alert('Error', e.message ?? 'No se pudo crear la clase.');
+            update(rawName, 'creating', false);
+        }
+    };
+
+    const handleSkip = (name: string) => {
+        onSkip(name);
+        setLocal(prev => prev.map(c =>
+            c.name.toLowerCase() === name.toLowerCase() ? { ...c, id: -1 } : c
+        ));
+    };
+
+    const allHandled = local.every(c => c.id !== null);
+
+    return (
+        <View style={{ flex: 1 }}>
+            <View style={styles.lotCheckHeader}>
+                <Ionicons name="grid-outline" size={20} color="#1D4ED8" />
+                <Text style={styles.lotCheckHeaderTxt}>
+                    {local.length} clase(s) del Excel no están registradas. Creálas o saltéalas.
+                </Text>
+            </View>
+
+            <FlatList
+                data={local}
+                keyExtractor={c => c.name}
+                contentContainerStyle={{ padding: Spacing.lg, gap: Spacing.sm }}
+                renderItem={({ item }) => {
+                    const done = item.id !== null;
+                    const skipped = item.id === -1;
+                    return (
+                        <View style={[styles.lotRow, {
+                            borderColor: skipped ? Colors.textDisabled : done ? Colors.success : '#3B82F6',
+                        }]}>
+                            <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                    <Ionicons
+                                        name={skipped ? 'remove-circle-outline' : done ? 'checkmark-circle' : 'alert-circle-outline'}
+                                        size={20}
+                                        color={skipped ? Colors.textDisabled : done ? Colors.success : '#3B82F6'}
+                                    />
+                                    <Text style={[styles.lotRowName, { flex: 1 }]}>{item.name}</Text>
+                                    {done && !skipped && <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '700' }}>Creada ✓</Text>}
+                                    {skipped && <Text style={{ fontSize: 11, color: Colors.textDisabled }}>Saltada</Text>}
+                                </View>
+
+                                {!done && !skipped && (
+                                    <>
+                                        <Text style={styles.classPickerLabel}>SEXO</Text>
+                                        <View style={styles.classPickerRow}>
+                                            {SEX_OPTIONS.map(s => (
+                                                <TouchableOpacity
+                                                    key={s.val}
+                                                    style={[styles.classChip, item.sex === s.val && styles.classChipActive]}
+                                                    onPress={() => update(item.name, 'sex', s.val)}
+                                                >
+                                                    <Text style={[styles.classChipTxt, item.sex === s.val && styles.classChipTxtActive]}>
+                                                        {s.label}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        <Text style={styles.classPickerLabel}>ETAPA PRODUCTIVA</Text>
+                                        <View style={styles.classPickerRow}>
+                                            {PS_OPTIONS.map(ps => (
+                                                <TouchableOpacity
+                                                    key={ps.val}
+                                                    style={[styles.classChip, item.productive_status === ps.val && styles.classChipActive]}
+                                                    onPress={() => update(item.name, 'productive_status', ps.val)}
+                                                >
+                                                    <Text style={[styles.classChipTxt, item.productive_status === ps.val && styles.classChipTxtActive]}>
+                                                        {ps.label}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                                            <TouchableOpacity
+                                                style={[styles.createLotBtn, { backgroundColor: Colors.border }]}
+                                                onPress={() => handleSkip(item.name)}
+                                            >
+                                                <Text style={[styles.createLotBtnTxt, { color: Colors.textSecondary }]}>Saltar</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.createLotBtn, item.creating && styles.loadBtnDisabled]}
+                                                onPress={() => handleCreate(item.name)}
+                                                disabled={item.creating}
+                                            >
+                                                <Text style={styles.createLotBtnTxt}>
+                                                    {item.creating ? 'Creando...' : 'Crear clase'}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    </>
+                                )}
+                            </View>
+                        </View>
+                    );
+                }}
+                ListFooterComponent={<View style={{ height: 100 }} />}
+            />
+
+            <View style={[styles.previewFooter, { paddingBottom: insets.bottom + 8 }]}>
+                <TouchableOpacity
+                    style={[styles.loadBtn, !allHandled && styles.loadBtnDisabled]}
+                    onPress={() => onContinue(local)}
+                    disabled={!allHandled}
+                >
+                    <Ionicons name="arrow-forward" size={20} color={Colors.white} />
+                    <Text style={styles.loadBtnTxt}>CONTINUAR</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+}
+
+// ─── Pantalla de verificación de razas ───────────────────────────────────────
+
+function BreedCheckScreen({
+    unresolvedBreeds,
+    onResolve,
+    onSkip,
+    onContinue,
+}: {
+    unresolvedBreeds: UnresolvedBreed[];
+    onResolve: (name: string, id: number) => void;
+    onSkip: (name: string) => void;
+    onContinue: (resolved: UnresolvedBreed[]) => void;
+}) {
+    const insets = useSafeAreaInsets();
+    const [localBreeds, setLocalBreeds] = useState<UnresolvedBreed[]>(unresolvedBreeds);
+    const [creating, setCreating] = useState<string | null>(null); // nombre de raza en proceso
+
+    const handleCreate = async (rawName: string) => {
+        setCreating(rawName);
+        try {
+            const db = await getDb();
+            const result = await db.runAsync(
+                `INSERT INTO animal_breeds (name, is_active) VALUES (?, 1)`,
+                [rawName]
+            );
+            const createdId = result.lastInsertRowId as number;
+            onResolve(rawName, createdId);
+            setLocalBreeds(prev => prev.map(b =>
+                b.name.toLowerCase() === rawName.toLowerCase() ? { ...b, id: createdId } : b
+            ));
+        } catch (e: any) {
+            Alert.alert('Error', e.message ?? 'No se pudo crear la raza.');
+        } finally {
+            setCreating(null);
+        }
+    };
+
+    const handleSkip = (name: string) => {
+        onSkip(name);
+        setLocalBreeds(prev => prev.map(b =>
+            b.name.toLowerCase() === name.toLowerCase() ? { ...b, id: -1 } : b
+        ));
+    };
+
+    const allHandled = localBreeds.every(b => b.id !== null);
+
+    return (
+        <View style={{ flex: 1 }}>
+            <View style={styles.lotCheckHeader}>
+                <Ionicons name="paw-outline" size={20} color="#92400E" />
+                <Text style={styles.lotCheckHeaderTxt}>
+                    {localBreeds.length} raza(s) del Excel no están registradas. Creálas o saltealas.
+                </Text>
+            </View>
+
+            <FlatList
+                data={localBreeds}
+                keyExtractor={b => b.name}
+                contentContainerStyle={{ padding: Spacing.lg, gap: Spacing.sm }}
+                renderItem={({ item }) => {
+                    const done = item.id !== null;
+                    const skipped = item.id === -1;
+                    const isCreating = creating === item.name;
+                    return (
+                        <View style={[styles.lotRow, {
+                            borderColor: skipped ? Colors.textDisabled : done ? Colors.success : Colors.error,
+                        }]}>
+                            <Ionicons
+                                name={skipped ? 'remove-circle-outline' : done ? 'checkmark-circle' : 'alert-circle-outline'}
+                                size={22}
+                                color={skipped ? Colors.textDisabled : done ? Colors.success : Colors.error}
+                            />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.lotRowName}>{item.name}</Text>
+                                {skipped && (
+                                    <Text style={{ fontSize: 11, color: Colors.textDisabled }}>
+                                        Saltada — se usará raza por defecto
+                                    </Text>
+                                )}
+                            </View>
+                            {!done && !skipped && (
+                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <TouchableOpacity
+                                        style={[styles.createLotBtn, { backgroundColor: Colors.border }]}
+                                        onPress={() => handleSkip(item.name)}
+                                    >
+                                        <Text style={[styles.createLotBtnTxt, { color: Colors.textSecondary }]}>Saltar</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.createLotBtn, isCreating && styles.loadBtnDisabled]}
+                                        onPress={() => handleCreate(item.name)}
+                                        disabled={isCreating}
+                                    >
+                                        <Text style={styles.createLotBtnTxt}>
+                                            {isCreating ? 'Creando...' : 'Crear'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                            {done && !skipped && (
+                                <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '700' }}>Creada ✓</Text>
+                            )}
+                        </View>
+                    );
+                }}
+                ListFooterComponent={<View style={{ height: 100 }} />}
+            />
+
+            <View style={[styles.previewFooter, { paddingBottom: insets.bottom + 8 }]}>
+                <TouchableOpacity
+                    style={[styles.loadBtn, !allHandled && styles.loadBtnDisabled]}
+                    onPress={() => onContinue(localBreeds)}
+                    disabled={!allHandled}
+                >
+                    <Ionicons name="arrow-forward" size={20} color={Colors.white} />
+                    <Text style={styles.loadBtnTxt}>CONTINUAR</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+}
+
+// ─── Pantalla de verificación de lotes ───────────────────────────────────────
+
+const LOT_TYPES = [
+    { value: 'recria', label: 'Recría', color: '#10B981' },
+    { value: 'engorde', label: 'Engorde', color: '#F97316' },
+    { value: 'general', label: 'General', color: Colors.primary },
+] as const;
+
+function LotCheckScreen({
+    unresolvedLots,
+    onResolve,
+    onContinue,
+}: {
+    unresolvedLots: UnresolvedLot[];
+    onResolve: (name: string, id: string) => void;
+    onContinue: () => void;
+}) {
+    const insets = useSafeAreaInsets();
+    const [pastures, setPastures] = useState<{ id: string; name: string }[]>([]);
+    const [modalVisible, setModalVisible] = useState(false);
+    const [activeLotName, setActiveLotName] = useState<string | null>(null);
+    const [lotType, setLotType] = useState<'recria' | 'engorde' | 'general'>('recria');
+    const [selectedPastureId, setSelectedPastureId] = useState<string | null>(null);
+    const [creating, setCreating] = useState(false);
+
+    useEffect(() => {
+        (async () => {
+            const session = await getSession();
+            if (!session) return;
+            const db = await getDb();
+            const rows = await db.getAllAsync<{ id: string; name: string }>(
+                `SELECT id, name FROM ranch_pastures WHERE id_ranch = ?`, [session.id_ranch]
+            );
+            setPastures(rows);
+        })();
+    }, []);
+
+    const allResolved = unresolvedLots.every(l => l.id !== null);
+
+    const openModal = (name: string) => {
+        setActiveLotName(name);
+        setLotType('recria');
+        setSelectedPastureId(null);
+        setModalVisible(true);
+    };
+
+    const createLot = async () => {
+        if (!activeLotName) return;
+        if (!selectedPastureId) {
+            Alert.alert('Potrero requerido', 'Seleccioná un potrero para asignar el lote.');
+            return;
+        }
+        setCreating(true);
+        try {
+            const session = await getSession();
+            if (!session) throw new Error('Sin sesión activa');
+            const db = await getDb();
+            const id = newId();
+            const ts = now();
+            await db.runAsync(
+                `INSERT INTO ranch_lots (id, id_ranch, id_ranch_pasture, name, lot_type, capacity, is_active, created_at, updated_at, is_synced, sync_action)
+                 VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?, 0, 'INSERT')`,
+                [id, session.id_ranch, selectedPastureId, activeLotName, lotType, ts, ts]
+            );
+            onResolve(activeLotName, id);
+            setModalVisible(false);
+        } catch (e: any) {
+            Alert.alert('Error', e.message ?? 'No se pudo crear el lote.');
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    return (
+        <View style={{ flex: 1 }}>
+            <View style={styles.lotCheckHeader}>
+                <Ionicons name="warning-outline" size={20} color="#92400E" />
+                <Text style={styles.lotCheckHeaderTxt}>
+                    {unresolvedLots.length} lote(s) del Excel no existen localmente. Creálos para continuar.
+                </Text>
+            </View>
+
+            <FlatList
+                data={unresolvedLots}
+                keyExtractor={l => l.name}
+                contentContainerStyle={{ padding: Spacing.lg, gap: Spacing.sm }}
+                renderItem={({ item }) => {
+                    const resolved = item.id !== null;
+                    return (
+                        <View style={[styles.lotRow, { borderColor: resolved ? Colors.success : Colors.error }]}>
+                            <Ionicons
+                                name={resolved ? 'checkmark-circle' : 'alert-circle-outline'}
+                                size={22}
+                                color={resolved ? Colors.success : Colors.error}
+                            />
+                            <Text style={styles.lotRowName}>{item.name}</Text>
+                            {!resolved && (
+                                <TouchableOpacity style={styles.createLotBtn} onPress={() => openModal(item.name)}>
+                                    <Text style={styles.createLotBtnTxt}>Crear</Text>
+                                </TouchableOpacity>
+                            )}
+                            {resolved && (
+                                <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '700' }}>Creado ✓</Text>
+                            )}
+                        </View>
+                    );
+                }}
+                ListFooterComponent={<View style={{ height: 100 }} />}
+            />
+
+            <View style={[styles.previewFooter, { paddingBottom: insets.bottom + 8 }]}>
+                <TouchableOpacity
+                    style={[styles.loadBtn, !allResolved && styles.loadBtnDisabled]}
+                    onPress={onContinue}
+                    disabled={!allResolved}
+                >
+                    <Ionicons name="arrow-forward" size={20} color={Colors.white} />
+                    <Text style={styles.loadBtnTxt}>CONTINUAR CON VISTA PREVIA</Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Modal creación de lote */}
+            <Modal visible={modalVisible} animationType="slide" transparent statusBarTranslucent>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContainer}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Crear lote: {activeLotName}</Text>
+                            <TouchableOpacity onPress={() => setModalVisible(false)}>
+                                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView contentContainerStyle={{ padding: Spacing.lg, gap: Spacing.md }}>
+                            {/* Tipo de lote */}
+                            <Text style={styles.modalLabel}>TIPO DE LOTE</Text>
+                            <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                                {LOT_TYPES.map(t => (
+                                    <TouchableOpacity
+                                        key={t.value}
+                                        style={[styles.typeChip, lotType === t.value && { backgroundColor: t.color, borderColor: t.color }]}
+                                        onPress={() => setLotType(t.value)}
+                                    >
+                                        <Text style={[styles.typeChipTxt, lotType === t.value && { color: Colors.white }]}>
+                                            {t.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            {/* Potrero */}
+                            <Text style={[styles.modalLabel, { marginTop: Spacing.sm }]}>POTRERO *</Text>
+                            {pastures.length === 0 ? (
+                                <Text style={{ fontSize: 13, color: Colors.textDisabled }}>No hay potreros registrados.</Text>
+                            ) : (
+                                pastures.map(p => (
+                                    <TouchableOpacity
+                                        key={p.id}
+                                        style={[styles.pastureRow, selectedPastureId === p.id && styles.pastureRowSelected]}
+                                        onPress={() => setSelectedPastureId(prev => prev === p.id ? null : p.id)}
+                                    >
+                                        <Ionicons
+                                            name={selectedPastureId === p.id ? 'radio-button-on' : 'radio-button-off'}
+                                            size={18}
+                                            color={selectedPastureId === p.id ? Colors.primary : Colors.textDisabled}
+                                        />
+                                        <Text style={styles.pastureRowTxt}>{p.name}</Text>
+                                    </TouchableOpacity>
+                                ))
+                            )}
+
+                            <TouchableOpacity
+                                style={[styles.loadBtn, creating && styles.loadBtnDisabled, { marginTop: Spacing.lg }]}
+                                onPress={createLot}
+                                disabled={creating}
+                            >
+                                <Text style={styles.loadBtnTxt}>{creating ? 'Creando...' : 'CREAR LOTE'}</Text>
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -331,16 +811,44 @@ function IdleScreen({ onPick }: { onPick: () => void }) {
 
 export default function BulkImportAnimals() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const {
-        step, progress, rows, errorMsg,
+        step, progress, rows, unresolvedClasses, unresolvedBreeds, unresolvedLots, errorMsg,
         loadedCount, skippedCount, validCount, invalidCount,
-        pickAndParse, removeRow, loadToDatabase, reset,
+        pickAndParse,
+        resolveClass, skipClass, finalizeClassCheck,
+        resolveBreed, skipBreed, finalizeBreedCheck,
+        resolveLot, finalizeLotCheck,
+        removeRow, loadToDatabase, reset,
     } = useBulkImportAnimals();
 
     const renderContent = () => {
         switch (step) {
             case 'idle': return <IdleScreen onPick={pickAndParse} />;
             case 'reading': return <ReadingScreen progress={progress} />;
+            case 'class_check': return (
+                <ClassCheckScreen
+                    unresolvedClasses={unresolvedClasses}
+                    onResolve={resolveClass}
+                    onSkip={skipClass}
+                    onContinue={finalizeClassCheck}
+                />
+            );
+            case 'breed_check': return (
+                <BreedCheckScreen
+                    unresolvedBreeds={unresolvedBreeds}
+                    onResolve={resolveBreed}
+                    onSkip={skipBreed}
+                    onContinue={finalizeBreedCheck}
+                />
+            );
+            case 'lot_check': return (
+                <LotCheckScreen
+                    unresolvedLots={unresolvedLots}
+                    onResolve={resolveLot}
+                    onContinue={finalizeLotCheck}
+                />
+            );
             case 'preview': return (
                 <PreviewScreen
                     rows={rows}
@@ -371,9 +879,9 @@ export default function BulkImportAnimals() {
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
             {showHeader && (
-                <View style={styles.header}>
+                <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                     <TouchableOpacity
-                        onPress={() => { reset(); router.push('/views/(tabs)/admin/bulkImport/bulkImport' as any); }}
+                        onPress={() => { reset(); router.replace('/views/(tabs)/admin/Registros/RegistrosMenu' as any); }}
                         style={styles.backBtn}
                         disabled={step === 'loading' || step === 'reading'}
                     >
@@ -386,13 +894,15 @@ export default function BulkImportAnimals() {
                         <Text style={styles.headerTitle}>Carga Masiva</Text>
                         <Text style={styles.headerSub}>Animales</Text>
                     </View>
-                    {/* Indicador de paso */}
                     <View style={styles.stepIndicator}>
                         <Text style={styles.stepText}>
-                            {step === 'idle' ? '1/3' :
-                                step === 'reading' ? '2/3' :
-                                    step === 'preview' ? '2/3' :
-                                        step === 'loading' ? '3/3' : ''}
+                            {step === 'idle' ? '1/6' :
+                                step === 'reading' ? '1/6' :
+                                    step === 'class_check' ? '2/6' :
+                                        step === 'breed_check' ? '3/6' :
+                                            step === 'lot_check' ? '4/6' :
+                                                step === 'preview' ? '5/6' :
+                                                    step === 'loading' ? '6/6' : ''}
                         </Text>
                     </View>
                 </View>
@@ -411,7 +921,6 @@ const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: Colors.background },
     header: {
         flexDirection: 'row', alignItems: 'center',
-        paddingTop: Platform.OS === 'ios' ? 60 : 20,
         paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md,
         backgroundColor: Colors.background, gap: Spacing.md,
     },
@@ -462,7 +971,7 @@ const styles = StyleSheet.create({
     // Buttons
     primaryBtn: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-        backgroundColor: Colors.primary, borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.primaryButton, borderRadius: BorderRadius.lg,
         paddingVertical: 16, paddingHorizontal: 28, gap: 8,
         width: '100%', marginTop: Spacing.md, ...Shadows.floatingButton,
     },
@@ -524,7 +1033,6 @@ const styles = StyleSheet.create({
         position: 'absolute', bottom: 0, left: 0, right: 0,
         flexDirection: 'row', gap: Spacing.md,
         paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
-        paddingBottom: Platform.OS === 'ios' ? 30 : Spacing.md,
         backgroundColor: Colors.white, ...Shadows.card,
     },
     cancelBtn: {
@@ -534,9 +1042,61 @@ const styles = StyleSheet.create({
     cancelBtnTxt: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
     loadBtn: {
         flex: 0.65, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-        backgroundColor: Colors.primary, borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.primaryButton, borderRadius: BorderRadius.lg,
         paddingVertical: 14, gap: 6, ...Shadows.floatingButton,
     },
     loadBtnDisabled: { backgroundColor: Colors.textDisabled },
     loadBtnTxt: { fontSize: 13, fontWeight: '800', color: Colors.white },
+
+    // Lot check
+    lotCheckHeader: {
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        backgroundColor: '#FEF3C7', paddingHorizontal: Spacing.lg, paddingVertical: 12,
+    },
+    lotCheckHeaderTxt: { flex: 1, fontSize: 13, color: '#92400E', lineHeight: 18 },
+    lotRow: {
+        flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+        backgroundColor: Colors.white, borderRadius: BorderRadius.lg,
+        padding: Spacing.md, borderWidth: 1.5, ...Shadows.card,
+    },
+    lotRowName: { flex: 1, fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
+    createLotBtn: {
+        backgroundColor: Colors.primary, borderRadius: BorderRadius.md,
+        paddingHorizontal: Spacing.md, paddingVertical: 6,
+    },
+    createLotBtnTxt: { fontSize: 12, fontWeight: '800', color: Colors.white },
+
+    // Modal lote
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+    modalContainer: {
+        backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl,
+        borderTopRightRadius: BorderRadius.xl, maxHeight: '80%',
+    },
+    modalHeader: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        padding: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    },
+    modalTitle: { fontSize: 16, fontWeight: '800', color: Colors.textPrimary, flex: 1 },
+    modalLabel: { fontSize: 11, fontWeight: '800', color: Colors.textSecondary, letterSpacing: 0.5 },
+    typeChip: {
+        flex: 1, paddingVertical: 10, borderRadius: BorderRadius.md, alignItems: 'center',
+        borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background,
+    },
+    typeChipTxt: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
+    pastureRow: {
+        flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+        paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    },
+    pastureRowSelected: { backgroundColor: Colors.primary + '08' },
+    pastureRowTxt: { fontSize: 14, color: Colors.textPrimary },
+
+    classPickerLabel: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, marginBottom: 4, letterSpacing: 0.5 },
+    classPickerRow: { flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' },
+    classChip: {
+        paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8,
+        backgroundColor: Colors.border, borderWidth: 1, borderColor: Colors.border,
+    },
+    classChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    classChipTxt: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+    classChipTxtActive: { color: Colors.white },
 });

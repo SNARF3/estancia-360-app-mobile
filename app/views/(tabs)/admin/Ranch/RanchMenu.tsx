@@ -1,15 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 
 export default function RanchMenu() {
     const router = useRouter();
 
     const handleBack = () => {
-        // Navigate back to Management screen
-        router.push('/views/admin/management/Management');
+        router.replace('/views/(tabs)/admin/management/Management');
     };
 
     const handleNavigation = (route: string) => {
@@ -83,7 +83,7 @@ export default function RanchMenu() {
                             <Text style={styles.gridSubtitle}>Vacunas y Tratamientos</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity style={styles.gridCard} onPress={() => handleNavigation('/views/UnderConstruction')}>
+                        <TouchableOpacity style={styles.gridCard} onPress={() => handleNavigation('/views/(tabs)/admin/Ranch/movements/MovimientosMenu')}>
                             <View style={styles.iconWrapper}>
                                 <Ionicons name="swap-horizontal" size={32} color={Colors.primary} />
                             </View>
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
         backgroundColor: Colors.background,
         paddingHorizontal: Spacing.lg,
         paddingVertical: 15,
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight! + 10 : 15,
+        paddingTop: 15,
     },
     headerLeft: {
         flexDirection: 'row',

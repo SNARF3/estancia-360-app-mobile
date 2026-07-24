@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -13,6 +13,8 @@ import {
     View,
 } from 'react-native';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
+import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import {
     DIAGNOSIS_METHOD_LABELS,
@@ -22,8 +24,10 @@ import { useGestationDiagnosis } from '../../../../../../hooks/breeding/use-Gest
 import { breedingFormStyles as styles } from './breedingFormStyles';
 
 export default function GestationDiagnosisForm() {
+    const insets = useSafeAreaInsets();
     const router = useRouter();
-    const params = useLocalSearchParams<{ animalCode?: string }>();
+  const [isPickerVisible, setIsPickerVisible] = useState(false);
+    const params = useLocalSearchParams<{ animalCode?: string; from?: string }>();
     const {
         formData,
         updateField,
@@ -40,6 +44,14 @@ export default function GestationDiagnosisForm() {
         }
     }, [params.animalCode]);
 
+    const handleBack = () => {
+        if (params.from === 'registros') {
+            router.replace('/views/(tabs)/admin/Registros/RegistrosMenu' as any);
+        } else {
+            router.back();
+        }
+    };
+
     const handleSave = async () => {
         const result = await saveDiagnosis();
         if (result) {
@@ -48,10 +60,7 @@ export default function GestationDiagnosisForm() {
                 'El diagnóstico de gestación ha sido registrado correctamente.',
                 [
                     { text: 'Nuevo Registro', onPress: resetForm },
-                    {
-                        text: 'Volver',
-                        onPress: () => { resetForm(); router.back(); },
-                    },
+                    { text: 'Volver', onPress: () => { resetForm(); handleBack(); } },
                 ]
             );
         }
@@ -63,8 +72,8 @@ export default function GestationDiagnosisForm() {
     return (
         <View style={styles.mainContainer}>
             {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+                <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={styles.headerTextContainer}>
@@ -103,14 +112,16 @@ export default function GestationDiagnosisForm() {
                     <Text style={styles.sectionTitle}>DATOS DEL ANIMAL</Text>
                     <View style={styles.card}>
                         <Text style={styles.label}>CÓDIGO DEL ANIMAL *</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Ej: GP-0012"
-                            value={formData.animalCode}
-                            onChangeText={(text) => updateField('animalCode', text)}
-                            placeholderTextColor={Colors.textDisabled}
-                            autoCapitalize="characters"
-                        />
+                        <TouchableOpacity
+                            style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                            onPress={() => setIsPickerVisible(true)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={{ fontSize: 16, color: formData.animalCode ? Colors.textPrimary : Colors.textDisabled }}>
+                                {formData.animalCode || 'Buscar animal...'}
+                            </Text>
+                            <Ionicons name="search" size={18} color={Colors.textDisabled} />
+                        </TouchableOpacity>
                         <DateSelector
                             label="FECHA DEL DIAGNÓSTICO"
                             value={formData.eventDate}
@@ -259,7 +270,13 @@ export default function GestationDiagnosisForm() {
                         }
                     </TouchableOpacity>
                 </ScrollView>
-            </KeyboardAvoidingView>
+            
+      <AnimalPickerModal
+          visible={isPickerVisible}
+          onClose={() => setIsPickerVisible(false)}
+          onSelect={(code) => updateField('animalCode', code)}
+      />
+</KeyboardAvoidingView>
         </View>
     );
 }

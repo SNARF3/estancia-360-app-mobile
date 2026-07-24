@@ -45,7 +45,7 @@ export interface AnimalMeta {
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useGetListAnimals() {
+export function useGetListAnimals(autoFetch: boolean = true) {
     const [animals, setAnimals] = useState<Animal[]>([]);
     const [loading, setLoading] = useState(false);
     const [meta, setMeta] = useState<AnimalMeta>({ total: 0, pages: 1 });
@@ -146,11 +146,13 @@ export function useGetListAnimals() {
         }
     }, []);
 
-    // Refrescar automáticamente al enfocar la pantalla
+    // Refrescar automáticamente al enfocar la pantalla si autoFetch es true
     useFocusEffect(
         useCallback(() => {
-            fetchAnimals();
-        }, [fetchAnimals])
+            if (autoFetch) {
+                fetchAnimals();
+            }
+        }, [fetchAnimals, autoFetch])
     );
 
     return {

@@ -1,295 +1,299 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  Animated,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from 'react-native';
-import { AnimatedLogo } from '../../../components/common/AnimatedLogo';
-import { ButtonPrimary } from '../../../components/common/ButtonPrimary';
-import { HeaderText } from '../../../components/common/HeaderText';
-import { InputField } from '../../../components/common/InputField';
-import { Colors, Spacing, Typography } from '../../../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../constants/theme';
 import { useUserLoginLogic } from '../../../hooks/auth/use-UserLoginLogic';
 
+const FIELD_BG = 'rgba(217,217,217,0.5)';
+
 export default function LoginScreen() {
-  const router = useRouter();
+    const router = useRouter();
+    const insets = useSafeAreaInsets();
+    const { height } = useWindowDimensions();
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
-  // Estado para ver/ocultar contraseña
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+    // Logo: altura = 32% de pantalla, máx 260px — ancho derivado del ratio 1080×1350 (=0.8)
+    const logoH = Math.min(height * 0.32, 260);
+    const logoW = logoH * (1080 / 1350);
 
-  const {
-    formData,
-    touched,
-    errors,
-    loading,
-    apiError,
-    successMessage,
-    animations,
-    handleInputChange,
-    handleBlur,
-    handleLogin,
-    isFormValid,
-  } = useUserLoginLogic(); // Se eliminó 'resetForm' que no se usaba
+    const {
+        formData,
+        touched,
+        errors,
+        loading,
+        apiError,
+        successMessage,
+        handleInputChange,
+        handleBlur,
+        handleLogin,
+        isFormValid,
+    } = useUserLoginLogic();
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => router.back()}
-      >
-        <Ionicons name="arrow-back" size={34} color={Colors.primary} />
-      </TouchableOpacity>
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Header */}
-        <Animated.View
-          style={[
-            styles.header,
-            { opacity: animations.fadeAnim, transform: [{ translateY: animations.headerSlideUp }] }
-          ]}
+    return (
+        <KeyboardAvoidingView
+            style={s.root}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <HeaderText variant="h1">Bienvenido</HeaderText>
-          <View style={styles.logoContainer}>
-            <AnimatedLogo size={220} />
-          </View>
-          <Text style={styles.subtitle}>Inicia sesión en tu cuenta de Estancia 360</Text>
-        </Animated.View>
-
-        {/* Mensajes de Estado */}
-        <Animated.View
-          style={{
-            transform: [{ translateX: animations.shakeAnimation }],
-            opacity: apiError || successMessage ? 1 : 0,
-          }}
-        >
-          {apiError && (
-            <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={20} color={Colors.error} />
-              <Text style={styles.errorText}>{apiError}</Text>
-            </View>
-          )}
-
-          {successMessage && (
-            <View style={styles.successContainer}>
-              <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-              <Text style={styles.successText}>{successMessage}</Text>
-            </View>
-          )}
-        </Animated.View>
-
-        {/* Formulario */}
-        <Animated.View
-          style={[
-            styles.form,
-            { opacity: animations.fadeAnim, transform: [{ translateY: animations.formSlideUp }] }
-          ]}
-        >
-          <InputField
-            label="Email"
-            placeholder="tu.email@ejemplo.com"
-            value={formData.email}
-            onChangeText={(val) => handleInputChange('email', val)}
-            onBlur={() => handleBlur('email')}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            error={errors.email}
-            touched={touched.email}
-            editable={!loading}
-            autoComplete="email"
-          />
-
-          {/* Contenedor relativo para posicionar el ojo */}
-          <View style={styles.passwordContainer}>
-            <InputField
-              label="Contraseña"
-              placeholder="Ingresa tu contraseña"
-              value={formData.password}
-              onChangeText={(val) => handleInputChange('password', val)}
-              onBlur={() => handleBlur('password')}
-              secureTextEntry={!isPasswordVisible} // Controlado por el estado
-              error={errors.password}
-              touched={touched.password}
-              editable={!loading}
-              autoComplete="password"
-            />
-
-            {/* Botón de Ojo */}
+            {/* Back button — se mantiene igual que antes */}
             <TouchableOpacity
-              style={styles.eyeIcon}
-              onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-              disabled={loading}
+                style={[s.backBtn, { top: insets.top + 12 }]}
+                onPress={() => router.canGoBack() ? router.back() : router.replace('/views/auth/Inicio' as any)}
             >
-              <Ionicons
-                name={isPasswordVisible ? "eye-off" : "eye"}
-                size={24}
-                color={Colors.textSecondary}
-              />
+                <Ionicons name="arrow-back" size={34} color={Colors.primary} />
             </TouchableOpacity>
-          </View>
 
-          <TouchableOpacity
-            style={styles.forgotPassword}
-            onPress={() => router.push('views/auth/VerificationCodeEmail' as any)}
-            disabled={loading}
-          >
-            <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
-          </TouchableOpacity>
-        </Animated.View>
+            <ScrollView
+                contentContainerStyle={[s.scroll, { paddingTop: insets.top + 64, paddingBottom: insets.bottom + 32 }]}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+            >
+                {/* Título */}
+                <Text style={s.title}>¡Bienvenido de vuelta!</Text>
 
-        {/* Botones */}
-        <Animated.View
-          style={[
-            styles.actions,
-            { opacity: animations.fadeAnim, transform: [{ translateY: animations.buttonSlideUp }] }
-          ]}
-        >
-          <ButtonPrimary
-            title="Iniciar Sesión"
-            onPress={handleLogin}
-            loading={loading}
-            disabled={!isFormValid || loading}
-            style={styles.loginButton}
-          />
+                {/* Logo */}
+                <Image
+                    source={require('../../../assets/estancia360/logo-login.png')}
+                    style={[s.logo, { width: logoW, height: logoH }]}
+                    resizeMode="contain"
+                />
 
-          <View style={styles.registerSection}>
-            <Text style={styles.registerText}>¿No tienes una cuenta? </Text>
-            <Link href="/views/auth/Register" asChild>
-              <TouchableOpacity disabled={loading}>
-                <Text style={styles.registerLink}>Regístrate</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
-        </Animated.View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
+                {/* Mensajes de error / éxito */}
+                {apiError ? (
+                    <View style={s.errorBanner}>
+                        <Ionicons name="alert-circle" size={18} color={Colors.error} />
+                        <Text style={s.errorBannerText}>{apiError}</Text>
+                    </View>
+                ) : null}
+                {successMessage ? (
+                    <View style={s.successBanner}>
+                        <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
+                        <Text style={s.successBannerText}>{successMessage}</Text>
+                    </View>
+                ) : null}
+
+                {/* Campo: Correo electrónico */}
+                <Text style={s.fieldLabel}>Correo electrónico</Text>
+                <TextInput
+                    style={[s.fieldInput, touched.email && errors.email ? s.fieldInputError : null]}
+                    placeholder="tu.correo@gmail.com"
+                    placeholderTextColor="rgba(0,0,0,0.4)"
+                    value={formData.email}
+                    onChangeText={v => handleInputChange('email', v)}
+                    onBlur={() => handleBlur('email')}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    editable={!loading}
+                />
+                {touched.email && errors.email ? (
+                    <Text style={s.fieldError}>{errors.email}</Text>
+                ) : null}
+
+                {/* Campo: Contraseña */}
+                <Text style={[s.fieldLabel, { marginTop: Spacing.md }]}>Contraseña</Text>
+                <View style={s.pwdWrap}>
+                    <TextInput
+                        style={[s.fieldInput, s.fieldInputPwd, touched.password && errors.password ? s.fieldInputError : null]}
+                        placeholder="••••••••"
+                        placeholderTextColor="rgba(0,0,0,0.4)"
+                        value={formData.password}
+                        onChangeText={v => handleInputChange('password', v)}
+                        onBlur={() => handleBlur('password')}
+                        secureTextEntry={!isPasswordVisible}
+                        autoComplete="password"
+                        editable={!loading}
+                    />
+                    <TouchableOpacity
+                        style={s.eyeBtn}
+                        onPress={() => setIsPasswordVisible(v => !v)}
+                        disabled={loading}
+                    >
+                        <Ionicons
+                            name={isPasswordVisible ? 'eye-off' : 'eye'}
+                            size={22}
+                            color="rgba(0,0,0,0.45)"
+                        />
+                    </TouchableOpacity>
+                </View>
+                {touched.password && errors.password ? (
+                    <Text style={s.fieldError}>{errors.password}</Text>
+                ) : null}
+
+                {/* ¿Olvidaste tu contraseña? */}
+                <TouchableOpacity
+                    style={s.forgotRow}
+                    onPress={() => router.push('views/auth/VerificationCodeEmail' as any)}
+                    disabled={loading}
+                >
+                    <Text style={s.forgotText}>¿Olvidaste tu contraseña?</Text>
+                </TouchableOpacity>
+
+                {/* Botón Iniciar Sesión */}
+                <TouchableOpacity
+                    style={[s.btn, (!isFormValid || loading) && s.btnDisabled]}
+                    onPress={handleLogin}
+                    disabled={!isFormValid || loading}
+                    activeOpacity={0.85}
+                >
+                    {loading
+                        ? <ActivityIndicator color="#e8e8e8" />
+                        : <Text style={s.btnText}>Iniciar Sesión</Text>
+                    }
+                </TouchableOpacity>
+            </ScrollView>
+        </KeyboardAvoidingView>
+    );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  backButton: {
-    position: 'absolute',
-    top: Spacing.xl + 10,
-    left: Spacing.lg,
-    zIndex: 10,
-    width: 48,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xxl + 60,
-    paddingBottom: Spacing.xl,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginTop: Spacing.xl,
-    marginBottom: Spacing.lg,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  subtitle: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: Spacing.sm,
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.errorLight,
-    padding: Spacing.md,
-    borderRadius: 8,
-    marginBottom: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.error,
-  },
-  errorText: {
-    ...Typography.bodySmall,
-    color: Colors.error,
-    marginLeft: Spacing.sm,
-    flex: 1,
-  },
-  successContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.successLight,
-    padding: Spacing.md,
-    borderRadius: 8,
-    marginBottom: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.success,
-  },
-  successText: {
-    ...Typography.bodySmall,
-    color: Colors.success,
-    marginLeft: Spacing.sm,
-    flex: 1,
-  },
-  form: {
-    flex: 1,
-    marginBottom: Spacing.lg,
-  },
-  // Nuevos estilos para el input de password
-  passwordContainer: {
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  eyeIcon: {
-    position: 'absolute',
-    right: 15,
-    top: 40, // Ajusta este valor dependiendo de la altura de tu label + padding del InputField
-    zIndex: 1,
-    padding: 5,
-  },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginBottom: Spacing.lg,
-  },
-  forgotPasswordText: {
-    ...Typography.bodySmall,
-    color: Colors.primary,
-  },
-  actions: {
-    marginTop: 'auto',
-    marginBottom: Spacing.xl,
-  },
-  loginButton: {
-    marginBottom: Spacing.md,
-  },
-  registerSection: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  registerText: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-  registerLink: {
-    ...Typography.body,
-    color: Colors.primary,
-    fontWeight: '600',
-  },
+const s = StyleSheet.create({
+    root: {
+        flex: 1,
+        backgroundColor: Colors.background,
+    },
+    backBtn: {
+        position: 'absolute',
+        left: Spacing.lg,
+        zIndex: 10,
+        width: 48,
+        height: 48,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    scroll: {
+        paddingHorizontal: Spacing.lg,
+        flexGrow: 1,
+    },
+    title: {
+        fontSize: 24,
+        fontWeight: '700',
+        color: '#000',
+        fontFamily: Typography.h2.fontFamily,
+        marginBottom: Spacing.md,
+    },
+    logo: {
+        alignSelf: 'center',
+        marginBottom: Spacing.lg,
+    },
+
+    // Banners de error/éxito
+    errorBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: Colors.errorLight,
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.error,
+    },
+    errorBannerText: {
+        flex: 1,
+        fontSize: 13,
+        color: Colors.error,
+        fontFamily: Typography.body.fontFamily,
+    },
+    successBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: Colors.successLight,
+        borderRadius: BorderRadius.md,
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.success,
+    },
+    successBannerText: {
+        flex: 1,
+        fontSize: 13,
+        color: Colors.success,
+        fontFamily: Typography.body.fontFamily,
+    },
+
+    // Campos
+    fieldLabel: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#000',
+        fontFamily: Typography.body.fontFamily,
+        marginBottom: 6,
+    },
+    fieldInput: {
+        height: 48,
+        backgroundColor: FIELD_BG,
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        fontSize: 15,
+        color: '#000',
+        fontFamily: Typography.body.fontFamily,
+    },
+    fieldInputPwd: {
+        paddingRight: 48,
+    },
+    fieldInputError: {
+        borderWidth: 1,
+        borderColor: Colors.error,
+    },
+    fieldError: {
+        fontSize: 12,
+        color: Colors.error,
+        marginTop: 4,
+        fontFamily: Typography.body.fontFamily,
+    },
+    pwdWrap: {
+        position: 'relative',
+        justifyContent: 'center',
+    },
+    eyeBtn: {
+        position: 'absolute',
+        right: 14,
+        top: 13,
+        padding: 2,
+    },
+    forgotRow: {
+        alignSelf: 'flex-end',
+        marginTop: Spacing.sm,
+        marginBottom: Spacing.xl,
+    },
+    forgotText: {
+        fontSize: 13,
+        color: Colors.primary,
+        fontWeight: '600',
+        fontFamily: Typography.body.fontFamily,
+    },
+
+    // Botón
+    btn: {
+        height: 58,
+        backgroundColor: Colors.primary,
+        borderRadius: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 'auto',
+        ...Shadows.floatingButton,
+    },
+    btnDisabled: {
+        opacity: 0.6,
+    },
+    btnText: {
+        color: '#e8e8e8',
+        fontSize: 16,
+        fontWeight: '600',
+        fontFamily: Typography.button.fontFamily,
+    },
 });

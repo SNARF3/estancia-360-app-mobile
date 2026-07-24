@@ -181,6 +181,19 @@ export async function dischargeAnimal(id: string): Promise<void> {
     );
 }
 
+/** Asigna un animal a un lote sin cambiar su estado productivo */
+export async function assignAnimalToLot(id: string, id_lot: string): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(
+        `UPDATE ranch_animals
+         SET id_lot = ?, updated_at = ?,
+             is_synced = 0,
+             sync_action = CASE WHEN sync_action = 'INSERT' THEN 'INSERT' ELSE 'UPDATE' END
+         WHERE id = ?`,
+        [id_lot, now(), id]
+    );
+}
+
 /** Actualiza el peso actual del animal */
 export async function updateAnimalWeight(id: string, weight: number): Promise<void> {
     const db = await getDb();
