@@ -5,31 +5,36 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, Tou
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimalMultiPickerModal } from '../../../../../../components/common/AnimalMultiPickerModal';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
-import { LotSelectorModal } from '../../../../../../components/common/LotSelectorModal';
 import { Colors } from '../../../../../../constants/theme';
-import { useAnimalTransfer } from '../../../../../../hooks/movements/use-AnimalTransfer';
+import { useAnimalRanchExit } from '../../../../../../hooks/movements/use-AnimalRanchExit';
 import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
 
-export default function TransferForm() {
+export default function RanchExitForm() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { formData, updateField, addAnimals, removeAnimal, saveRecord, resetForm, loading, error } = useAnimalTransfer();
-    const [animalPickerVisible, setAnimalPickerVisible] = useState(false);
-    const [lotPickerVisible, setLotPickerVisible] = useState(false);
+    const { formData, updateField, addAnimals, removeAnimal, saveRecord, resetForm, loading, error } = useAnimalRanchExit();
+    const [pickerVisible, setPickerVisible] = useState(false);
 
     const handleSave = async () => {
         const count = formData.animals.length;
-        const ok = await saveRecord();
-        if (ok) {
-            Alert.alert(
-                'Traslado registrado',
-                `${count} animal${count === 1 ? '' : 'es'} trasladado${count === 1 ? '' : 's'} a ${formData.destLotName}.`,
-                [
-                    { text: 'Nuevo traslado', onPress: resetForm },
-                    { text: 'Volver', onPress: () => router.back() },
-                ]
-            );
-        }
+        Alert.alert(
+            'Confirmar salida',
+            `${count} animal${count === 1 ? '' : 'es'} saldrá${count === 1 ? '' : 'n'} definitivamente hacia "${formData.destinationRanch}". Esta acción es IRREVERSIBLE. ¿Continuar?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Confirmar salida', style: 'destructive', onPress: async () => {
+                        const ok = await saveRecord();
+                        if (ok) {
+                            Alert.alert('Salida registrada', `${count} animal${count === 1 ? '' : 'es'} registrado${count === 1 ? '' : 's'} como salida a otra estancia.`, [
+                                { text: 'Nueva salida', onPress: resetForm },
+                                { text: 'Volver', onPress: () => router.back() },
+                            ]);
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     return (
@@ -39,11 +44,11 @@ export default function TransferForm() {
                     <Ionicons name="arrow-back" size={24} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={styles.headerTextContainer}>
-                    <Text style={styles.title}>Registrar Traslado</Text>
+                    <Text style={styles.title}>Salida a Otra Estancia</Text>
                     <Text style={styles.subtitle}>Movimientos del rodeo</Text>
                 </View>
-                <View style={[styles.headerIcon, { backgroundColor: Colors.primary + '20' }]}>
-                    <Ionicons name="swap-horizontal" size={22} color={Colors.primary} />
+                <View style={[styles.headerIcon, { backgroundColor: '#F59E0B20' }]}>
+                    <Ionicons name="exit-outline" size={22} color="#F59E0B" />
                 </View>
             </View>
 
@@ -60,31 +65,27 @@ export default function TransferForm() {
                     ))}
                     <TouchableOpacity
                         style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }]}
-                        onPress={() => setAnimalPickerVisible(true)}
+                        onPress={() => setPickerVisible(true)}
                         activeOpacity={0.7}
                     >
                         <Text style={{ fontSize: 16, color: Colors.textDisabled }}>Agregar animales...</Text>
-                        <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
+                        <Ionicons name="add-circle-outline" size={20} color="#F59E0B" />
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Datos del Traslado</Text>
+                    <Text style={styles.sectionTitle}>Datos de la Salida</Text>
 
                     <Text style={styles.label}>FECHA *</Text>
                     <DateSelector value={formData.eventDate} onChange={(d) => updateField('eventDate', d)} label="" />
 
-                    <Text style={styles.label}>LOTE DESTINO *</Text>
-                    <TouchableOpacity
-                        style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
-                        onPress={() => setLotPickerVisible(true)}
-                        activeOpacity={0.7}
-                    >
-                        <Text style={{ fontSize: 16, color: formData.destLotName ? Colors.textPrimary : Colors.textDisabled }}>
-                            {formData.destLotName || 'Seleccionar lote...'}
-                        </Text>
-                        <Ionicons name="location-outline" size={18} color={Colors.textDisabled} />
-                    </TouchableOpacity>
+                    <Text style={styles.label}>ESTANCIA DESTINO *</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Nombre de la estancia receptora"
+                        value={formData.destinationRanch}
+                        onChangeText={(v) => updateField('destinationRanch', v)}
+                    />
 
                     <Text style={styles.label}>OBSERVACIONES</Text>
                     <TextInput
@@ -105,7 +106,7 @@ export default function TransferForm() {
                 )}
 
                 <TouchableOpacity
-                    style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+                    style={[styles.saveButton, loading && styles.saveButtonDisabled, { backgroundColor: '#F59E0B' }]}
                     onPress={handleSave}
                     disabled={loading}
                     activeOpacity={0.85}
@@ -115,26 +116,17 @@ export default function TransferForm() {
                     ) : (
                         <>
                             <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                            <Text style={styles.saveButtonText}>Registrar Traslado</Text>
+                            <Text style={styles.saveButtonText}>Registrar Salida</Text>
                         </>
                     )}
                 </TouchableOpacity>
             </ScrollView>
 
             <AnimalMultiPickerModal
-                visible={animalPickerVisible}
-                onClose={() => setAnimalPickerVisible(false)}
+                visible={pickerVisible}
+                onClose={() => setPickerVisible(false)}
                 onConfirm={addAnimals}
                 initialSelected={formData.animals.map((a) => a.code)}
-            />
-            <LotSelectorModal
-                visible={lotPickerVisible}
-                onClose={() => setLotPickerVisible(false)}
-                onSelect={(lot) => {
-                    updateField('destLotId', lot.id);
-                    updateField('destLotName', lot.name);
-                }}
-                title="Seleccionar lote destino"
             />
         </KeyboardAvoidingView>
     );

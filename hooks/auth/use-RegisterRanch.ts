@@ -44,9 +44,9 @@ export const useRegisterRanch = () => {
         setData(null);
 
         try {
-            // Endpoint: /api/estancia-360/ranches
+            // Endpoint: /api/ranches
             const response = await postRequest<RegisterRanchResponse>(
-                'estancia-360/ranches',
+                'ranches',
                 payload
             );
 

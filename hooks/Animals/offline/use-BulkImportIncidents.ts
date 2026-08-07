@@ -6,6 +6,7 @@ import { getSession } from '../../auth/use-Auth';
 import { EVENT_TYPES } from '../../db.sqlite/database';
 import { getDb } from '../../db.sqlite/db-pool';
 import { newId, now } from '../../db.sqlite/db-utils';
+import { setAnimalObservation } from '../../db.sqlite/repositories/animals';
 
 function mapDate(raw: any): string | null {
     if (!raw) return null;
@@ -73,7 +74,8 @@ export function useBulkImportIncidents() {
             });
             setProgress(35);
             const workbook = xlsxRead(base64, { type: 'base64', cellDates: true });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const sheetName = workbook.SheetNames.includes('Carga_Incidentes') ? 'Carga_Incidentes' : workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
             const jsonRows = xlsxUtils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][];
             setProgress(50);
             if (jsonRows.length < 2) { setErrorMsg('El archivo no contiene datos.'); setStep('error'); return; }
@@ -89,12 +91,14 @@ export function useBulkImportIncidents() {
                 .filter(r => r.some((c: any) => c !== null && c !== ''))
                 .map((r, i) => {
                     const errors: string[] = [];
-                    const animalCode = r[0]?.toString().trim().toUpperCase() ?? null;
+                    // ID_CARGA, FECHA, CODIGO_ANIMAL, LOTE_ACTUAL, TIPO_INCIDENTE, DESCRIPCION,
+                    // FECHA_RESUELTO, RESPONSABLE, NOTAS, EFECTO_SISTEMA, VALIDACION (plantilla real)
                     const eventDate = mapDate(r[1]);
-                    const incident_type = mapIncidentType(r[2]);
-                    const description = r[3] ? r[3].toString().trim() : null;
-                    const resolved_at = mapDate(r[4]);
-                    const notes = r[5] ? r[5].toString().trim() : null;
+                    const animalCode = r[2]?.toString().trim().toUpperCase() ?? null;
+                    const incident_type = mapIncidentType(r[4]);
+                    const description = r[5] ? r[5].toString().trim() : null;
+                    const resolved_at = mapDate(r[6]);
+                    const notes = r[8] ? r[8].toString().trim() : null;
                     if (!animalCode) errors.push('Código de animal vacío');
                     if (!eventDate) errors.push('Fecha inválida');
                     if (!incident_type) errors.push('Tipo inválido (use: illness_detected o quarantine)');
@@ -143,6 +147,13 @@ export function useBulkImportIncidents() {
                             `INSERT INTO health_incidents (id, id_event, incident_type, description, resolved_at, notes, created_at, updated_at, is_synced, sync_action) VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
                             [newId(), eventId, row.incident_type, row.description, row.resolved_at, row.notes, ts, ts]
                         );
+
+                        // Cuarentena activa (sin resolver) → animal pasa a En Observación, mismo
+                        // efecto que el registro individual (registerHealthIncident en events.ts).
+                        // La carga masiva insertaba directo sin pasar por ahí y se lo saltaba.
+                        if (row.incident_type === 'quarantine' && !row.resolved_at) {
+                            await setAnimalObservation(row.animal_id!, true);
+                        }
                     });
                     loaded++;
                 } catch { skipped++; }

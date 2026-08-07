@@ -1,7 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { getDb } from '../db.sqlite/db-pool';
+
+const SYNC_CREDENTIALS_KEY = 'sync_credentials';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -115,15 +118,16 @@ export async function getToken(): Promise<string | null> {
 
 // ─── saveCredentials / getCredentials ────────────────────────────────────────
 // Guardan email+password para poder re-autenticar automáticamente antes de sync.
-// Se llaman desde use-UserLoginLogic al hacer login exitoso.
+// Se llaman desde use-UserLoginLogic al hacer login exitoso. Usa SecureStore (Keychain/
+// Keystore cifrado) en vez de AsyncStorage — antes la contraseña quedaba en texto plano.
 
 export async function saveCredentials(email: string, password: string): Promise<void> {
-  await AsyncStorage.setItem('sync_credentials', JSON.stringify({ email, password }));
+  await SecureStore.setItemAsync(SYNC_CREDENTIALS_KEY, JSON.stringify({ email, password }));
 }
 
 export async function getCredentials(): Promise<{ email: string; password: string } | null> {
   try {
-    const raw = await AsyncStorage.getItem('sync_credentials');
+    const raw = await SecureStore.getItemAsync(SYNC_CREDENTIALS_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -143,11 +147,12 @@ export async function getUserData(): Promise<SessionParams | null> {
 }
 
 // ─── logout ───────────────────────────────────────────────────────────────────
-// Solo borra la sesión de AsyncStorage.
+// Borra la sesión de AsyncStorage y las credenciales guardadas en SecureStore.
 // Los datos del negocio en SQLite (animales, eventos, etc.) NO se borran.
 
 export async function logout(): Promise<void> {
   await AsyncStorage.multiRemove(['access_token', 'user_id', 'user_role', 'user_data']);
+  await SecureStore.deleteItemAsync(SYNC_CREDENTIALS_KEY).catch(() => {});
   // NO tocamos SQLite — los datos del negocio sobreviven al logout
   router.replace('/views/auth/Login');
 }

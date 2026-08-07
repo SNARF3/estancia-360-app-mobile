@@ -27,7 +27,7 @@ export const useWorkerWithRanch = () => {
             console.log('🔗 Vinculando trabajador...', payload);
 
             // Usamos tu conexión existente
-            await postRequest<LinkWorkerResponse>('estancia-360/ranch-users', payload);
+            await postRequest<LinkWorkerResponse>('ranch-users', payload);
 
             return true; // Éxito
         } catch (err: any) {

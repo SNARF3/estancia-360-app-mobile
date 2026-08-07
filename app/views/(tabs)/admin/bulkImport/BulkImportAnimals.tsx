@@ -28,7 +28,7 @@ import { newId, now } from '../../../../../hooks/db.sqlite/db-utils';
 const CLASS_NAMES: Record<number, string> = {
     1: 'Ternera', 2: 'Ternero M. Entero', 3: 'Ternero M. Castrado',
     4: 'H. Destetada', 5: 'M. Entero Destetado', 6: 'M. Castrado Destetado',
-    7: 'Vaquilla', 8: 'Vaca', 9: 'H. Esterilizada', 10: 'Toro', 11: 'Novillo',
+    7: 'Vaquilla', 8: 'Vaca', 9: 'H. Esterilizada', 10: 'Torillo', 11: 'Novillo',
 };
 
 // ─── Barra de progreso animada ────────────────────────────────────────────────
@@ -297,18 +297,9 @@ function PreviewScreen({
 
 // ─── Pantalla de verificación de clases ──────────────────────────────────────
 
-const PS_OPTIONS = [
-    { val: 1, label: 'Cría' },
-    { val: 2, label: 'Recría' },
-    { val: 3, label: 'Engorde' },
-] as const;
-
-const SEX_OPTIONS = [
-    { val: 'M', label: 'Macho' },
-    { val: 'F', label: 'Hembra' },
-    { val: 'any', label: 'Ambos' },
-] as const;
-
+// Las 11 clases son un catálogo fijo (decisión del proyecto — no se crean desde la app).
+// Cuando el Excel trae un nombre que no matchea ninguna, el operador debe MAPEARLO a una
+// de las clases existentes (o saltar la fila), nunca inventar una clase nueva sin sincronizar.
 function ClassCheckScreen({
     unresolvedClasses,
     onResolve,
@@ -321,32 +312,24 @@ function ClassCheckScreen({
     onContinue: (resolved: UnresolvedClass[]) => void;
 }) {
     const insets = useSafeAreaInsets();
-    const [local, setLocal] = useState(
-        unresolvedClasses.map(c => ({ ...c, sex: 'any' as 'M' | 'F' | 'any', creating: false }))
-    );
+    const [local, setLocal] = useState(unresolvedClasses.map(c => ({ ...c })));
+    const [knownClasses, setKnownClasses] = useState<{ id: number; name: string; sex: string | null; default_productive_status: number }[]>([]);
 
-    const update = (name: string, field: string, value: any) =>
-        setLocal(prev => prev.map(c => c.name.toLowerCase() === name.toLowerCase() ? { ...c, [field]: value } : c));
+    useEffect(() => {
+        (async () => {
+            try {
+                const db = await getDb();
+                const rows = await db.getAllAsync<{ id: number; name: string; sex: string | null; default_productive_status: number }>(
+                    `SELECT id, name, sex, default_productive_status FROM animal_classes WHERE is_active = 1 ORDER BY name`
+                );
+                setKnownClasses(rows);
+            } catch { }
+        })();
+    }, []);
 
-    const handleCreate = async (rawName: string) => {
-        const item = local.find(c => c.name.toLowerCase() === rawName.toLowerCase());
-        if (!item) return;
-        update(rawName, 'creating', true);
-        try {
-            const db = await getDb();
-            const result = await db.runAsync(
-                `INSERT INTO animal_classes (name, sex, default_productive_status, is_active) VALUES (?,?,?,1)`,
-                [rawName, item.sex === 'any' ? null : item.sex, item.productive_status]
-            );
-            const createdId = result.lastInsertRowId as number;
-            onResolve(rawName, createdId, item.productive_status);
-            setLocal(prev => prev.map(c =>
-                c.name.toLowerCase() === rawName.toLowerCase() ? { ...c, id: createdId, creating: false } : c
-            ));
-        } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'No se pudo crear la clase.');
-            update(rawName, 'creating', false);
-        }
+    const handleMap = (rawName: string, target: { id: number; default_productive_status: number }) => {
+        onResolve(rawName, target.id, target.default_productive_status);
+        setLocal(prev => prev.map(c => c.name.toLowerCase() === rawName.toLowerCase() ? { ...c, id: target.id } : c));
     };
 
     const handleSkip = (name: string) => {
@@ -363,7 +346,7 @@ function ClassCheckScreen({
             <View style={styles.lotCheckHeader}>
                 <Ionicons name="grid-outline" size={20} color="#1D4ED8" />
                 <Text style={styles.lotCheckHeaderTxt}>
-                    {local.length} clase(s) del Excel no están registradas. Creálas o saltéalas.
+                    {local.length} clase(s) del Excel no coinciden con ninguna existente. Mapealas a una clase real o saltéalas.
                 </Text>
             </View>
 
@@ -386,59 +369,31 @@ function ClassCheckScreen({
                                         color={skipped ? Colors.textDisabled : done ? Colors.success : '#3B82F6'}
                                     />
                                     <Text style={[styles.lotRowName, { flex: 1 }]}>{item.name}</Text>
-                                    {done && !skipped && <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '700' }}>Creada ✓</Text>}
+                                    {done && !skipped && <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '700' }}>Mapeada ✓</Text>}
                                     {skipped && <Text style={{ fontSize: 11, color: Colors.textDisabled }}>Saltada</Text>}
                                 </View>
 
                                 {!done && !skipped && (
                                     <>
-                                        <Text style={styles.classPickerLabel}>SEXO</Text>
+                                        <Text style={styles.classPickerLabel}>MAPEAR A</Text>
                                         <View style={styles.classPickerRow}>
-                                            {SEX_OPTIONS.map(s => (
+                                            {knownClasses.map(k => (
                                                 <TouchableOpacity
-                                                    key={s.val}
-                                                    style={[styles.classChip, item.sex === s.val && styles.classChipActive]}
-                                                    onPress={() => update(item.name, 'sex', s.val)}
+                                                    key={k.id}
+                                                    style={styles.classChip}
+                                                    onPress={() => handleMap(item.name, k)}
                                                 >
-                                                    <Text style={[styles.classChipTxt, item.sex === s.val && styles.classChipTxtActive]}>
-                                                        {s.label}
-                                                    </Text>
+                                                    <Text style={styles.classChipTxt}>{k.name}</Text>
                                                 </TouchableOpacity>
                                             ))}
                                         </View>
 
-                                        <Text style={styles.classPickerLabel}>ETAPA PRODUCTIVA</Text>
-                                        <View style={styles.classPickerRow}>
-                                            {PS_OPTIONS.map(ps => (
-                                                <TouchableOpacity
-                                                    key={ps.val}
-                                                    style={[styles.classChip, item.productive_status === ps.val && styles.classChipActive]}
-                                                    onPress={() => update(item.name, 'productive_status', ps.val)}
-                                                >
-                                                    <Text style={[styles.classChipTxt, item.productive_status === ps.val && styles.classChipTxtActive]}>
-                                                        {ps.label}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-
-                                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-                                            <TouchableOpacity
-                                                style={[styles.createLotBtn, { backgroundColor: Colors.border }]}
-                                                onPress={() => handleSkip(item.name)}
-                                            >
-                                                <Text style={[styles.createLotBtnTxt, { color: Colors.textSecondary }]}>Saltar</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                style={[styles.createLotBtn, item.creating && styles.loadBtnDisabled]}
-                                                onPress={() => handleCreate(item.name)}
-                                                disabled={item.creating}
-                                            >
-                                                <Text style={styles.createLotBtnTxt}>
-                                                    {item.creating ? 'Creando...' : 'Crear clase'}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        </View>
+                                        <TouchableOpacity
+                                            style={[styles.createLotBtn, { backgroundColor: Colors.border, marginTop: 4 }]}
+                                            onPress={() => handleSkip(item.name)}
+                                        >
+                                            <Text style={[styles.createLotBtnTxt, { color: Colors.textSecondary }]}>Saltar</Text>
+                                        </TouchableOpacity>
                                     </>
                                 )}
                             </View>

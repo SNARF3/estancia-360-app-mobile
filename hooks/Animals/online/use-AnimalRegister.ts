@@ -47,7 +47,7 @@ export const useAnimalRegister = () => {
                 createdAt: animalData.createdAt || new Date().toISOString(),
             };
 
-            const response = await postRequest('estancia-360/ranch-animals', payload);
+            const response = await postRequest('ranch-animals', payload);
 
             if (response) {
                 setSuccess(true);

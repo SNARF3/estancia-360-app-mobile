@@ -112,14 +112,19 @@ function PreviewRow({ item, onRemove }: { item: ValidatedVaccinationRow; onRemov
             <View style={s.previewLeft}>
                 <View style={s.previewCodeRow}>
                     <Text style={[s.previewCode, hasErr && { color: Colors.error }]}>{item.animalCode}</Text>
-                    {item.vaccineName ? (
-                        <Text style={[s.badge, { backgroundColor: ACCENT + '20', color: ACCENT }]}>{item.vaccineName}</Text>
-                    ) : null}
                 </View>
+                {item.vaccines.length > 0 && (
+                    <View style={[s.previewCodeRow, { flexWrap: 'wrap', marginBottom: 4 }]}>
+                        {item.vaccines.map((v, i) => (
+                            <Text key={i} style={[s.badge, { backgroundColor: ACCENT + '20', color: ACCENT }]}>
+                                {v.name}{v.dose ? ` · ${v.dose}` : ''}
+                            </Text>
+                        ))}
+                    </View>
+                )}
                 <View style={s.previewMeta}>
                     <Ionicons name="calendar-outline" size={11} color={Colors.textDisabled} />
                     <Text style={s.previewMetaTxt}>{item.eventDate}</Text>
-                    {item.dose && <><Text style={s.dot}>·</Text><Text style={s.previewMetaTxt}>Dosis: {item.dose}</Text></>}
                     {item.responsible && <><Text style={s.dot}>·</Text><Ionicons name="person-outline" size={11} color={Colors.textDisabled} /><Text style={s.previewMetaTxt}>{item.responsible}</Text></>}
                 </View>
                 {hasErr && <View style={s.errorsWrap}>{item.errors.map((e, i) => <Text key={i} style={s.errorLine}>⚠ {e}</Text>)}</View>}
@@ -188,12 +193,12 @@ function IdleScreen({ onPick }: { onPick: () => void }) {
                 <Text style={s.primaryBtnTxt}>Elegir archivo</Text>
             </TouchableOpacity>
             <View style={s.columnsBox}>
-                <Text style={s.columnsTitle}>Columnas requeridas en la plantilla:</Text>
+                <Text style={s.columnsTitle}>Columnas de la plantilla (hoja Carga_Vacunas):</Text>
                 {[
-                    'CÓDIGO DEL ANIMAL',
                     'FECHA  (DD/MM/YYYY)',
-                    'NOMBRE DE VACUNA  (obligatorio)',
-                    'DOSIS  (Opcional)',
+                    'CODIGO_ANIMAL',
+                    'VACUNA_1 / DOSIS_1  (al menos una vacuna es obligatoria)',
+                    'VACUNA_2 / DOSIS_2  ·  VACUNA_3 / DOSIS_3  ·  VACUNA_4 / DOSIS_4  (opcionales, hasta 4 por fila)',
                     'RESPONSABLE  (Opcional)',
                     'NOTAS  (Opcional)',
                 ].map((c, i) => (

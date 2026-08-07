@@ -20,7 +20,7 @@ import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { ScreenContainer } from '../../../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import { useAnimalRegister } from '../../../../../../hooks/Animals/offline/use-AnimalRegister';
-import { AnimalBreed } from '../../../../../../hooks/Animals/offline/use-GetAnimalsData';
+import { AnimalBreed, useGetAnimalsData } from '../../../../../../hooks/Animals/offline/use-GetAnimalsData';
 import { Animal, useGetListAnimals } from '../../../../../../hooks/Animals/offline/use-GetListAnimals';
 import { getDb } from '../../../../../../hooks/db.sqlite/db-pool';
 
@@ -36,9 +36,7 @@ export default function AddAnimalScreen() {
             router.back();
         }
     };
-    // const { breeds, loading: loadingBreeds } = useGetAnimalsData();
-    const [breeds] = useState<any[]>([]); // Placeholder for types
-    const loadingBreeds = false;
+    const { breeds, loading: loadingBreeds } = useGetAnimalsData();
     const { animals, loading: loadingAnimals } = useGetListAnimals();
     const { registerAnimal, loading: registering, error: registerError } = useAnimalRegister();
 
@@ -46,7 +44,7 @@ export default function AddAnimalScreen() {
         code: '',
         codeMother: null as string | null,
         codeFather: null as string | null,
-        idBreed: 1, // Default breed ID
+        idBreed: null as number | null,
         birthdate: new Date().toISOString().split('T')[0],
         weight: '',
         sex: 'F' as 'M' | 'F',
@@ -60,7 +58,7 @@ export default function AddAnimalScreen() {
     const [breedModalVisible, setBreedModalVisible] = useState(false);
     const [motherModalVisible, setMotherModalVisible] = useState(false);
     const [fatherModalVisible, setFatherModalVisible] = useState(false);
-    const [selectedBreedName, setSelectedBreedName] = useState('VACA'); // Default name
+    const [selectedBreedName, setSelectedBreedName] = useState('Seleccionar raza');
     const [selectedClassName, setSelectedClassName] = useState('Seleccionar clase');
     const [searchQuery, setSearchQuery] = useState('');
     const [dbClasses, setDbClasses] = useState<{ id: number; name: string; sex: string | null }[]>([]);
@@ -112,11 +110,6 @@ export default function AddAnimalScreen() {
     };
 
     const [classModalVisible, setClassModalVisible] = useState(false);
-    const [addClassExpanded, setAddClassExpanded] = useState(false);
-    const [newClassName, setNewClassName] = useState('');
-    const [newClassSex, setNewClassSex] = useState<'M' | 'F' | 'any'>('any');
-    const [newClassPs, setNewClassPs] = useState(1);
-    const [creatingClass, setCreatingClass] = useState(false);
 
     const selectClass = (ac: any) => {
         updateField('idAnimalClass', ac.id);
@@ -126,30 +119,6 @@ export default function AddAnimalScreen() {
         if (name.includes('esterilizada')) updateField('isSterilized', true);
         if (name.includes('vaca')) updateField('hasCalved', true);
         setClassModalVisible(false);
-        setAddClassExpanded(false);
-    };
-
-    const handleCreateClass = async () => {
-        if (!newClassName.trim()) return;
-        setCreatingClass(true);
-        try {
-            const db = await getDb();
-            const result = await db.runAsync(
-                `INSERT INTO animal_classes (name, sex, default_productive_status, is_active) VALUES (?,?,?,1)`,
-                [newClassName.trim(), newClassSex === 'any' ? null : newClassSex, newClassPs]
-            );
-            const createdId = result.lastInsertRowId as number;
-            const created = { id: createdId, name: newClassName.trim(), sex: newClassSex === 'any' ? null : newClassSex };
-            setDbClasses(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
-            selectClass(created);
-            setNewClassName('');
-            setNewClassSex('any');
-            setNewClassPs(1);
-        } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'No se pudo crear la clase.');
-        } finally {
-            setCreatingClass(false);
-        }
     };
 
     const selectMother = (animal: Animal | null) => {
@@ -169,12 +138,10 @@ export default function AddAnimalScreen() {
             Alert.alert('Error', 'El código/arete es obligatorio.');
             return;
         }
-        /* 
         if (!formData.idBreed) {
             Alert.alert('Error', 'La raza es obligatoria.');
             return;
-        } 
-        */
+        }
         if (!formData.weight || isNaN(parseFloat(formData.weight))) {
             Alert.alert('Error', 'El peso es obligatorio.');
             return;
@@ -207,7 +174,7 @@ export default function AddAnimalScreen() {
                     text: 'OK',
                     onPress: () => {
                         setFormData(initialFormData);
-                        setSelectedBreedName('VACA');
+                        setSelectedBreedName('Seleccionar raza');
                         setSelectedClassName('Seleccionar clase');
                         handleBack();
                     },
@@ -284,7 +251,6 @@ export default function AddAnimalScreen() {
                                 </View>
                             </View>
 
-                            {/*
                             <Text style={styles.label}>RAZA *</Text>
                             <TouchableOpacity
                                 style={styles.input}
@@ -295,7 +261,6 @@ export default function AddAnimalScreen() {
                                 </Text>
                                 <Ionicons name="chevron-down" size={20} color={Colors.textDisabled} />
                             </TouchableOpacity>
-                            */}
 
                             <DateSelector
                                 label="FECHA DE NACIMIENTO"
@@ -449,64 +414,10 @@ export default function AddAnimalScreen() {
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Seleccionar Clase</Text>
-                            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                                <TouchableOpacity
-                                    onPress={() => setAddClassExpanded(v => !v)}
-                                    style={[styles.addClassToggle, addClassExpanded && styles.addClassToggleActive]}
-                                >
-                                    <Ionicons name={addClassExpanded ? 'remove' : 'add'} size={16} color={addClassExpanded ? Colors.white : Colors.primary} />
-                                    <Text style={[styles.addClassToggleTxt, addClassExpanded && { color: Colors.white }]}>Nueva</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => { setClassModalVisible(false); setAddClassExpanded(false); }}>
-                                    <Ionicons name="close" size={28} color={Colors.textPrimary} />
-                                </TouchableOpacity>
-                            </View>
+                            <TouchableOpacity onPress={() => setClassModalVisible(false)}>
+                                <Ionicons name="close" size={28} color={Colors.textPrimary} />
+                            </TouchableOpacity>
                         </View>
-
-                        {addClassExpanded && (
-                            <View style={styles.addClassForm}>
-                                <Text style={styles.addClassLabel}>NOMBRE DE LA CLASE</Text>
-                                <TextInput
-                                    style={styles.addClassInput}
-                                    placeholder="Ej: Torillo, Vaquillona..."
-                                    value={newClassName}
-                                    onChangeText={setNewClassName}
-                                    autoFocus
-                                />
-                                <Text style={styles.addClassLabel}>SEXO</Text>
-                                <View style={styles.addClassPickers}>
-                                    {([['M', 'Macho'], ['F', 'Hembra'], ['any', 'Ambos']] as const).map(([v, l]) => (
-                                        <TouchableOpacity
-                                            key={v}
-                                            style={[styles.addClassChip, newClassSex === v && styles.addClassChipActive]}
-                                            onPress={() => setNewClassSex(v)}
-                                        >
-                                            <Text style={[styles.addClassChipTxt, newClassSex === v && styles.addClassChipTxtActive]}>{l}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                                <Text style={styles.addClassLabel}>ETAPA PRODUCTIVA</Text>
-                                <View style={styles.addClassPickers}>
-                                    {([[ 1, 'Cría'], [2, 'Recría'], [3, 'Engorde']] as const).map(([v, l]) => (
-                                        <TouchableOpacity
-                                            key={v}
-                                            style={[styles.addClassChip, newClassPs === v && styles.addClassChipActive]}
-                                            onPress={() => setNewClassPs(v)}
-                                        >
-                                            <Text style={[styles.addClassChipTxt, newClassPs === v && styles.addClassChipTxtActive]}>{l}</Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                                <TouchableOpacity
-                                    style={[styles.addClassBtn, (!newClassName.trim() || creatingClass) && { opacity: 0.5 }]}
-                                    onPress={handleCreateClass}
-                                    disabled={!newClassName.trim() || creatingClass}
-                                >
-                                    <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                                    <Text style={styles.addClassBtnTxt}>{creatingClass ? 'Creando...' : 'Crear y seleccionar'}</Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
 
                         <ScrollView>
                             {filteredClasses.length > 0 ? (

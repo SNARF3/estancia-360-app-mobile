@@ -159,22 +159,12 @@ export function useRearingSelection() {
                     );
 
                 } else if (formData.destination === 'sale') {
-                    // Crear animal_sale
-                    const saleEventId = newId();
-                    await db.runAsync(
-                        `INSERT INTO animal_events
-               (id, id_user, id_ranch_animal, id_event_type, notes, event_date, created_at, updated_at, is_synced, sync_action)
-             VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
-                        [saleEventId, id_user, animal.id, EVENT_TYPES.VENTA,
-                            null, new Date(formData.eventDate).toISOString(), ts, ts]
-                    );
-                    await db.runAsync(
-                        `INSERT INTO animal_sales
-               (id, id_event, created_at, updated_at, is_synced, sync_action)
-             VALUES (?,?,?,?,0,'INSERT')`,
-                        [newId(), saleEventId, ts, ts]
-                    );
-                    // Dar de baja el animal
+                    // Backend (register-rearing-selection.use-case.ts): destination='sale' SOLO
+                    // pasa el animal a ps=BAJA + status=INACTIVE — no crea ningún registro de
+                    // venta (eso hoy vive en Movimientos, con su propio flujo pending/confirmed).
+                    // Este bloque insertaba en `animal_sales`, tabla eliminada por
+                    // migrations.ts v1 (reemplazada por movements/movement_animals) — cualquier
+                    // selección con destino "Venta" fallaba siempre con "no such table".
                     await db.runAsync(
                         `UPDATE ranch_animals
              SET id_productive_status = ?, id_status = ?, updated_at = ?,

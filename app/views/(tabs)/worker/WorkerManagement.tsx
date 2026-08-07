@@ -27,13 +27,16 @@ export default function WorkerManagementScreen() {
     const router = useRouter();
     const { userData } = useAuth();
 
-    // Obtener nombre de la estancia si existe
-    const ranchName = userData?.user?.ranchUsers?.[0]?.ranch?.name;
+    // userData es SessionParams (ver use-Auth.ts) — el nombre de la estancia viaja plano
+    // en ranch_name, no en user.ranchUsers[0].ranch.name (esa forma nunca existió acá y
+    // dejaba el subtítulo vacío siempre, incluso con estancia ya vinculada).
+    const ranchName = userData?.ranch_name;
 
     const handleScanPress = () => {
-        // Navegar a la pantalla del escáner creada arriba
-        // Ajusta la ruta según donde guardes QrScannerRanch.tsx
-        router.push('/views/worker/QrScannerRanch');
+        // Debe coincidir con la ruta real (incluye el segmento de grupo "(tabs)"), igual
+        // que la usa BottomTabBar para el mismo destino — sin él, expo-router no encuentra
+        // la pantalla.
+        router.push('/views/(tabs)/worker/QrScannerRanch');
     };
 
     const renderJobItem = ({ item }: any) => (

@@ -61,7 +61,7 @@ export const constants = {
         },
         {
             "id": 10,
-            "name": "Toro",
+            "name": "Torillo",
             "sex": "M",
             "isActive": true
         },

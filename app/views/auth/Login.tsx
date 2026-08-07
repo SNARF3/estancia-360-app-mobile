@@ -136,7 +136,7 @@ export default function LoginScreen() {
                 {/* ¿Olvidaste tu contraseña? */}
                 <TouchableOpacity
                     style={s.forgotRow}
-                    onPress={() => router.push('views/auth/VerificationCodeEmail' as any)}
+                    onPress={() => router.push('/views/auth/VerificationCodeEmail' as any)}
                     disabled={loading}
                 >
                     <Text style={s.forgotText}>¿Olvidaste tu contraseña?</Text>

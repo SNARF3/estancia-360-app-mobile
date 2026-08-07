@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRequest, postRequest } from '../db.postre-connection/db.connection';
 import { saveCredentials, saveSession } from './use-Auth';
 
@@ -24,29 +25,31 @@ interface UserRanchData {
     id: number;
     name: string;
     city: { id: number; name: string };
-    productionTypesDirectly: Array<{
-      id: number;
-      name: string;
+    // Forma real del backend (RanchDto): un array de { idProductionType, productionType: {id,name} },
+    // no { id, name } directo — el nombre de campo tampoco es "productionTypesDirectly".
+    productionTypes: Array<{
+      idProductionType: number;
+      productionType: { id: number; name: string };
     }>;
     createdAt: string;
     updatedAt: string;
     ranchUsers: Array<{
       user: {
         id: number;
-        idRole: number;
+        roleId: number; // backend: UserDto.roleId, no "idRole"
         ci: string;
         fullname: string;
         paternalSurname: string;
         maternalSurname: string;
         email: string;
-        celphone: string;
+        celphone: string | null;
         isDeleted: boolean;
         createdAt: string;
         updatedAt: string;
         role: { id: number; name: string };
       };
-      role: { id: number; name: string }; // Rol del usuario EN la estancia
-      salary?: number | null;
+      role: { id: number; name: string }; // Rol del usuario EN la estancia (RanchRoleDto)
+      // "salary" no existe en RanchUserWithUserDto del backend — no usarlo.
     }>;
   };
 }
@@ -154,7 +157,7 @@ export const useUserLoginLogic = () => {
 
     try {
       const response = await postRequest<LoginResponse | BackendErrorResponse>(
-        'estancia-360/auth/login',
+        'auth/login',
         { email: formData.email.trim(), password: formData.password }
       );
 
@@ -172,13 +175,21 @@ export const useUserLoginLogic = () => {
       // Login exitoso
       if ('accessToken' in response && response.accessToken) {
         await saveCredentials(formData.email.trim(), formData.password);
+
+        // Guardar el token YA en AsyncStorage antes de pedir los datos de la estancia —
+        // el interceptor de axios (db.connection.ts) lo lee de ahí para el header
+        // Authorization. Antes esto se guardaba recién en saveSession() más abajo,
+        // así que el GET de ranches siguiente salía sin token y el backend
+        // respondía 401 INVALID_TOKEN.
+        await AsyncStorage.setItem('access_token', response.accessToken);
+
         let userDetails: UserRanchData | null = null;
-        
+
         // El login ya me da el idRanch. Lo usamos para traer toda la metadata.
-        const idToFetchMetadata = response.idRanch || response.idUser; 
-        const fetchEndpoint = response.idRanch 
-          ? `estancia-360/ranches/${response.idRanch}` 
-          : `estancia-360/users/ranches/${response.idUser}`;
+        const idToFetchMetadata = response.idRanch || response.idUser;
+        const fetchEndpoint = response.idRanch
+          ? `ranches/${response.idRanch}`
+          : `users/ranches/${response.idUser}`;
 
         try {
           const apiResponse = await getRequest<UserRanchData>(fetchEndpoint);
@@ -190,10 +201,18 @@ export const useUserLoginLogic = () => {
           console.error('No se pudieron obtener datos del ranch:', fetchError);
         }
 
+        // ranchRole (RanchRolesEnum: OWNER=1, WORKER=2, ADMINISTRATOR=3) decide a qué
+        // pantalla redirigir más abajo — NO usar response.idRole para eso (ese es el rol
+        // de SISTEMA: ROOT=1, ADMIN=2, USUARIO=3, y prácticamente todo ganadero normal
+        // tiene idRole=3 ahí. Comparar idRole===3 mandaba a CUALQUIER dueño de estancia
+        // a la pantalla de Worker por error).
+        let ranchRole: number | undefined;
+
         if (userDetails && userDetails.ranch) {
           const ranch = userDetails.ranch;
           // Buscamos al usuario actual dentro de los miembros de esa estancia para sacar el nombre y rol real
           const currentMember = ranch.ranchUsers.find(ru => ru.user.id === response.idUser);
+          ranchRole = currentMember?.role.id;
 
           await saveSession({
             accessToken: response.accessToken,
@@ -203,15 +222,13 @@ export const useUserLoginLogic = () => {
             fullname: currentMember?.user.fullname || 'Usuario',
             id_ranch: ranch.id,
             ranch_name: ranch.name,
-            production_types: ranch.productionTypesDirectly.map(pt => pt.id),
-            ranch_role: currentMember?.role.id || response.idRole,
+            production_types: ranch.productionTypes.map(pt => pt.idProductionType),
+            ranch_role: ranchRole || response.idRole,
           });
         } else {
           // Sin ranch o sin datos extra → guardar solo lo básico en AsyncStorage
-          // (no se guarda en SQLite porque no hay ranch)
-          const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
+          // (no se guarda en SQLite porque no hay ranch). access_token ya se guardó arriba.
           await AsyncStorage.multiSet([
-            ['access_token', response.accessToken],
             ['user_id', response.idUser.toString()],
             ['user_role', response.idRole.toString()],
             ['user_data', JSON.stringify({ ...response, email: formData.email.trim() })],
@@ -226,7 +243,9 @@ export const useUserLoginLogic = () => {
         ]).start();
 
         setTimeout(() => {
-          if (response.idRole === 3) {
+          // WORKER (2) → pantalla de Worker. OWNER (1) / ADMINISTRATOR (3) / sin
+          // estancia todavía → pantalla de admin (Management).
+          if (ranchRole === 2) {
             router.replace('/views/(tabs)/worker/WorkerManagement');
           } else {
             router.replace('/views/(tabs)/admin/management/Management');

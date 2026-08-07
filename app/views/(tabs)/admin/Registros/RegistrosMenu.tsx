@@ -123,6 +123,7 @@ const BULK_ITEMS: BulkItem[] = [
     {
         label: 'Movimientos',
         Icon: MovementsIcon,
+        route: '/views/(tabs)/admin/bulkImport/BulkImportMovements',
     },
 ];
 

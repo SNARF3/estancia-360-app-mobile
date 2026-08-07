@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { ScreenContainer } from '../../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
+import { getSession } from '../../../../../hooks/auth/use-Auth';
 import { getDb } from '../../../../../hooks/db.sqlite/db-pool';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -47,6 +48,8 @@ export default function WeightsScreen() {
   const load = async () => {
     setLoading(true);
     try {
+      const session = await getSession();
+      if (!session) { setLoading(false); return; }
       const db = await getDb();
 
       // Animales en recría (2) o engorde (3) con último pesaje
@@ -71,10 +74,12 @@ export default function WeightsScreen() {
             ORDER BY wr3.created_at DESC LIMIT 1
           )
         ) wr ON wr.id_ranch_animal = a.id
-        WHERE a.id_productive_status IN (2, 3)
+        WHERE a.id_ranch = ?
+          AND a.id_productive_status IN (2, 3)
           AND a.id_status = 1
         ORDER BY a.code ASC
-        LIMIT 100`
+        LIMIT 100`,
+        [session.id_ranch]
       );
       setAnimals(animalRows);
 
@@ -108,10 +113,12 @@ export default function WeightsScreen() {
         LEFT JOIN ranch_animals a ON a.id_lot = rl.id
           AND a.id_productive_status IN (2, 3)
           AND a.id_status = 1
-        WHERE rl.lot_type IN ('recria', 'engorde')
+        WHERE rl.id_ranch = ?
+          AND rl.lot_type IN ('recria', 'engorde')
           AND rl.is_active = 1
         GROUP BY rl.id
-        ORDER BY rl.lot_type, rl.name`
+        ORDER BY rl.lot_type, rl.name`,
+        [session.id_ranch]
       );
       setLots(lotRows);
     } catch (e) {

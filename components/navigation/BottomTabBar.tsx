@@ -3,7 +3,7 @@ import { usePathname, useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/theme';
-import { useAuth } from '../../hooks/auth/use-Auth';
+import { getUserData } from '../../hooks/auth/use-Auth';
 
 interface TabItem {
   name: string;
@@ -22,11 +22,13 @@ interface TabBarProps {
 export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
   const router = useRouter();
   const pathname = usePathname();
-  const { getUserRole } = useAuth();
-  const [role, setRole] = React.useState<number | null>(null);
+  // ranch_role (OWNER=1/WORKER=2/ADMINISTRATOR=3), NO el rol de sistema (getUserRole()
+  // devuelve idRole, que en casi todo ganadero normal es 3 = "Usuario" — comparar eso acá
+  // mostraba la barra de Trabajador a cualquier dueño de estancia por error).
+  const [ranchRole, setRanchRole] = React.useState<number | null>(null);
 
   React.useEffect(() => {
-    getUserRole().then(setRole);
+    getUserData().then(data => setRanchRole(data?.ranch_role ?? null));
   }, []);
 
   const adminTabs: TabItem[] = [
@@ -78,7 +80,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
     },
   ];
 
-  const tabs = role === 3 ? workerTabs : adminTabs;
+  const tabs = ranchRole === 2 ? workerTabs : adminTabs;
 
   const { options } = descriptors[state.routes[state.index].key];
   const isHiddenModule =

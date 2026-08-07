@@ -57,6 +57,22 @@ export default function TabLayout() {
         options={{ href: null }}
       />
       <Tabs.Screen
+        name="admin/bulkImport/BulkImportTreatments"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="admin/bulkImport/BulkImportIncidents"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="admin/bulkImport/BulkImportGestation"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="admin/bulkImport/BulkImportMovements"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
         name="admin/bulkImport/bulkImport"
         options={{ href: null }}
       />

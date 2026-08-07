@@ -30,20 +30,14 @@ function useMovimientosStats() {
 
                 const [t, s, p, e] = await Promise.all([
                     db.getFirstAsync<{ count: number }>(
-                        `SELECT COUNT(*) as count FROM animal_transfers at2
-                         JOIN animal_events ae ON ae.id = at2.id_event
-                         WHERE ae.id_ranch_animal IN (SELECT id FROM ranch_animals WHERE id_ranch = ?)
-                         AND at2.created_at >= ?`, [session.id_ranch, since]),
+                        `SELECT COUNT(*) as count FROM movements
+                         WHERE id_ranch = ? AND movement_type = 'pasture_transfer' AND created_at >= ?`, [session.id_ranch, since]),
                     db.getFirstAsync<{ count: number }>(
-                        `SELECT COUNT(*) as count FROM animal_sales asal
-                         JOIN animal_events ae ON ae.id = asal.id_event
-                         WHERE ae.id_ranch_animal IN (SELECT id FROM ranch_animals WHERE id_ranch = ?)
-                         AND asal.created_at >= ?`, [session.id_ranch, since]),
+                        `SELECT COUNT(*) as count FROM movements
+                         WHERE id_ranch = ? AND movement_type = 'sale' AND created_at >= ?`, [session.id_ranch, since]),
                     db.getFirstAsync<{ count: number }>(
-                        `SELECT COUNT(*) as count FROM animal_purchases ap
-                         JOIN animal_events ae ON ae.id = ap.id_event
-                         WHERE ae.id_ranch_animal IN (SELECT id FROM ranch_animals WHERE id_ranch = ?)
-                         AND ap.created_at >= ?`, [session.id_ranch, since]),
+                        `SELECT COUNT(*) as count FROM movements
+                         WHERE id_ranch = ? AND movement_type = 'purchase' AND created_at >= ?`, [session.id_ranch, since]),
                     db.getFirstAsync<{ count: number }>(
                         `SELECT COUNT(*) as count FROM animal_exits aex
                          JOIN animal_events ae ON ae.id = aex.id_event
@@ -146,7 +140,22 @@ export default function MovimientosMenu() {
                     </View>
                     <View style={styles.actionText}>
                         <Text style={styles.actionTitle}>Compra</Text>
-                        <Text style={styles.actionSub}>Registrar compra de un animal existente</Text>
+                        <Text style={styles.actionSub}>Registrar ingreso de animales nuevos</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.textDisabled} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={styles.actionCard}
+                    onPress={() => router.push('/views/(tabs)/admin/Ranch/movements/RanchExitForm' as any)}
+                    activeOpacity={0.8}
+                >
+                    <View style={[styles.actionIcon, { backgroundColor: '#F59E0B15' }]}>
+                        <Ionicons name="exit-outline" size={28} color="#F59E0B" />
+                    </View>
+                    <View style={styles.actionText}>
+                        <Text style={styles.actionTitle}>Salida a otra estancia</Text>
+                        <Text style={styles.actionSub}>Sin venta comercial — irreversible</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={Colors.textDisabled} />
                 </TouchableOpacity>
@@ -162,6 +171,23 @@ export default function MovimientosMenu() {
                     <View style={styles.actionText}>
                         <Text style={styles.actionTitle}>Baja</Text>
                         <Text style={styles.actionSub}>Muerte, descarte o pérdida</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={Colors.textDisabled} />
+                </TouchableOpacity>
+
+                <Text style={[styles.sectionLabel, { marginTop: Spacing.lg }]}>SEGUIMIENTO</Text>
+
+                <TouchableOpacity
+                    style={styles.actionCard}
+                    onPress={() => router.push('/views/(tabs)/admin/Ranch/movements/PendingSalesScreen' as any)}
+                    activeOpacity={0.8}
+                >
+                    <View style={[styles.actionIcon, { backgroundColor: Colors.success + '15' }]}>
+                        <Ionicons name="time-outline" size={28} color={Colors.success} />
+                    </View>
+                    <View style={styles.actionText}>
+                        <Text style={styles.actionTitle}>Ventas Pendientes</Text>
+                        <Text style={styles.actionSub}>Confirmar o rechazar por animal</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color={Colors.textDisabled} />
                 </TouchableOpacity>
@@ -190,7 +216,7 @@ const styles = StyleSheet.create({
         fontFamily: Typography.fontSecondary,
     },
     headerIcon: {
-        width: 42, height: 42, borderRadius: BorderRadius.full ?? 21,
+        width: 42, height: 42, borderRadius: BorderRadius.circular,
         justifyContent: 'center', alignItems: 'center',
     },
     content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg },

@@ -2,28 +2,15 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import {
     Alert,
-    Animated, FlatList, Modal, StatusBar,
+    Animated, FlatList, StatusBar,
     StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
-import { getSession } from '../../../../../hooks/auth/use-Auth';
-import { getDb } from '../../../../../hooks/db.sqlite/db-pool';
-import { newId, now } from '../../../../../hooks/db.sqlite/db-utils';
-import { useBulkImportWeights, type UnresolvedLot, type ValidatedWeightRow } from '../../../../../hooks/Animals/offline/use-BulkImportWeights';
-
-// ─── Tipos internos ───────────────────────────────────────────────────────────
-
-interface Pasture { id: string; name: string; }
-
-const LOT_TYPES: { key: 'recria' | 'engorde' | 'general'; label: string }[] = [
-    { key: 'recria',  label: 'Recría'   },
-    { key: 'engorde', label: 'Engorde'  },
-    { key: 'general', label: 'General'  },
-];
+import { useBulkImportWeights, type ValidatedWeightRow } from '../../../../../hooks/Animals/offline/use-BulkImportWeights';
 
 // ─── Barra de progreso ────────────────────────────────────────────────────────
 
@@ -138,195 +125,6 @@ function ErrorScreen({ msg, onRetry }: { msg: string; onRetry: () => void }) {
             <TouchableOpacity style={[s.primaryBtn, { backgroundColor: Colors.error }]} onPress={onRetry}>
                 <Text style={s.primaryBtnTxt}>Intentar de nuevo</Text>
             </TouchableOpacity>
-        </View>
-    );
-}
-
-// ─── Pantalla de resolución de lotes ─────────────────────────────────────────
-
-function LotCheckScreen({ lots, onResolve, onContinue }: {
-    lots: UnresolvedLot[];
-    onResolve: (name: string, id: string) => void;
-    onContinue: () => void;
-}) {
-    const insets = useSafeAreaInsets();
-    const [pastures, setPastures] = useState<Pasture[]>([]);
-    const [modalVisible, setModalVisible] = useState(false);
-    const [activeLotName, setActiveLotName] = useState<string | null>(null);
-    const [selectedPasture, setSelectedPasture] = useState<Pasture | null>(null);
-    const [selectedType, setSelectedType] = useState<'recria' | 'engorde' | 'general'>('recria');
-    const [creating, setCreating] = useState(false);
-
-    useEffect(() => {
-        (async () => {
-            try {
-                const session = await getSession();
-                if (!session) return;
-                const db = await getDb();
-                const rows = await db.getAllAsync<Pasture>(
-                    `SELECT id, name FROM ranch_pastures WHERE id_ranch = ? AND is_active = 1 ORDER BY name`,
-                    [session.id_ranch]
-                );
-                setPastures(rows);
-            } catch {}
-        })();
-    }, []);
-
-    const openCreate = (lotName: string) => {
-        setActiveLotName(lotName);
-        setSelectedPasture(null);
-        setSelectedType('recria');
-        setModalVisible(true);
-    };
-
-    const handleCreate = async () => {
-        if (!activeLotName) return;
-        if (!selectedPasture) {
-            Alert.alert('Potrero requerido', 'Seleccioná un potrero para asignar el lote.');
-            return;
-        }
-        setCreating(true);
-        try {
-            const session = await getSession();
-            if (!session) throw new Error('Sin sesión');
-            const db = await getDb();
-            const ts = now();
-            const id = newId();
-            await db.runAsync(
-                `INSERT INTO ranch_lots (id, id_ranch, id_ranch_pasture, name, lot_type, capacity, is_active, created_at, updated_at, is_synced, sync_action)
-                 VALUES (?,?,?,?,?,NULL,1,?,?,0,'INSERT')`,
-                [id, session.id_ranch, selectedPasture.id, activeLotName, selectedType, ts, ts]
-            );
-            onResolve(activeLotName, id);
-            setModalVisible(false);
-        } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'No se pudo crear el lote.');
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    const allResolved = lots.every(l => l.id !== null);
-
-    return (
-        <View style={{ flex: 1 }}>
-            {/* Info */}
-            <View style={s.lotCheckInfo}>
-                <Ionicons name="warning" size={18} color="#92400E" />
-                <Text style={s.lotCheckInfoTxt}>
-                    Los siguientes lotes del Excel no se encontraron localmente. Verificá el nombre exacto o creá el lote ahora.
-                </Text>
-            </View>
-
-            <FlatList
-                data={lots}
-                keyExtractor={l => l.name}
-                contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.md }}
-                renderItem={({ item }) => (
-                    <View style={[s.lotRow, item.id && s.lotRowResolved]}>
-                        <View style={s.lotRowLeft}>
-                            <Ionicons
-                                name={item.id ? 'checkmark-circle' : 'alert-circle-outline'}
-                                size={22}
-                                color={item.id ? Colors.success : Colors.error}
-                            />
-                            <View style={{ flex: 1 }}>
-                                <Text style={s.lotRowName}>{item.name}</Text>
-                                <Text style={[s.lotRowStatus, { color: item.id ? Colors.success : Colors.error }]}>
-                                    {item.id ? 'Lote creado y listo' : 'No encontrado localmente'}
-                                </Text>
-                            </View>
-                        </View>
-                        {!item.id && (
-                            <TouchableOpacity style={s.createLotBtn} onPress={() => openCreate(item.name)}>
-                                <Ionicons name="add" size={16} color={Colors.white} />
-                                <Text style={s.createLotBtnTxt}>Crear</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                )}
-                ListFooterComponent={<View style={{ height: 100 }} />}
-            />
-
-            {/* Footer */}
-            <View style={[s.previewFooter, { paddingBottom: insets.bottom + 8 }]}>
-                <TouchableOpacity
-                    style={[s.loadBtn, !allResolved && s.loadBtnDisabled]}
-                    onPress={allResolved ? onContinue : undefined}
-                    disabled={!allResolved}
-                >
-                    <Ionicons name="arrow-forward-circle-outline" size={18} color={Colors.white} />
-                    <Text style={s.loadBtnTxt}>
-                        {allResolved ? 'VER REGISTROS' : `FALTAN ${lots.filter(l => !l.id).length} LOTE(S)`}
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Modal de creación de lote */}
-            <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
-                <View style={s.modalOverlay}>
-                    <View style={s.modalSheet}>
-                        <View style={s.modalHeader}>
-                            <Text style={s.modalTitle}>Crear Lote</Text>
-                            <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                                <Ionicons name="close" size={22} color={Colors.textPrimary} />
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={s.modalLotName}>"{activeLotName}"</Text>
-
-                        {/* Tipo de lote */}
-                        <Text style={s.modalSectionLabel}>TIPO DE LOTE</Text>
-                        <View style={s.typeRow}>
-                            {LOT_TYPES.map(t => (
-                                <TouchableOpacity
-                                    key={t.key}
-                                    style={[s.typeChip, selectedType === t.key && s.typeChipActive]}
-                                    onPress={() => setSelectedType(t.key)}
-                                >
-                                    <Text style={[s.typeChipTxt, selectedType === t.key && s.typeChipTxtActive]}>
-                                        {t.label}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        {/* Selección de potrero */}
-                        <Text style={s.modalSectionLabel}>POTRERO *</Text>
-                        {pastures.length === 0 ? (
-                            <Text style={s.noPasturesTxt}>No hay potreros registrados. Creá uno en Potreros primero.</Text>
-                        ) : (
-                            <FlatList
-                                data={pastures}
-                                keyExtractor={p => p.id}
-                                style={{ maxHeight: 180 }}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={[s.pastureRow, selectedPasture?.id === item.id && s.pastureRowActive]}
-                                        onPress={() => setSelectedPasture(item)}
-                                    >
-                                        <Ionicons
-                                            name={selectedPasture?.id === item.id ? 'radio-button-on' : 'radio-button-off'}
-                                            size={18}
-                                            color={selectedPasture?.id === item.id ? Colors.primary : Colors.textDisabled}
-                                        />
-                                        <Text style={[s.pastureRowTxt, selectedPasture?.id === item.id && { color: Colors.primary, fontWeight: '700' }]}>
-                                            {item.name}
-                                        </Text>
-                                    </TouchableOpacity>
-                                )}
-                            />
-                        )}
-
-                        <TouchableOpacity
-                            style={[s.primaryBtn, { marginTop: Spacing.lg }, (creating || pastures.length === 0) && s.loadBtnDisabled]}
-                            onPress={handleCreate}
-                            disabled={creating || pastures.length === 0}
-                        >
-                            <Text style={s.primaryBtnTxt}>{creating ? 'Creando...' : 'CREAR LOTE'}</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
         </View>
     );
 }
@@ -468,10 +266,9 @@ function IdleScreen({ onPick }: { onPick: () => void }) {
             <View style={s.columnsBox}>
                 <Text style={s.columnsTitle}>Columnas requeridas:</Text>
                 {[
-                    'CÓDIGO ANIMAL *',
-                    'NOMBRE LOTE *  (nombre exacto del lote)',
-                    'FECHA PESAJE *  (DD/MM/YYYY)',
-                    'PESO (KG) *',
+                    'CÓDIGO DEL ANIMAL *',
+                    'FECHA DE PESAJE *  (DD/MM/YYYY)',
+                    'PESO KG *',
                     'CONDICIÓN CORPORAL  (1=muy flaco … 5=muy gordo)',
                     'OBSERVACIONES',
                 ].map((c, i) => (
@@ -491,19 +288,18 @@ export default function BulkImportWeights() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const {
-        step, progress, rows, unresolvedLots, errorMsg,
+        step, progress, rows, errorMsg,
         loadedCount, skippedCount, validCount, invalidCount,
-        pickAndParse, resolveLot, finalizeLotCheck, removeRow, loadToDatabase, reset,
+        pickAndParse, removeRow, loadToDatabase, reset,
     } = useBulkImportWeights();
 
     const blocked = step === 'loading' || step === 'reading';
 
     const stepBadge = () => {
         switch (step) {
-            case 'idle':      return '1/4';
-            case 'lot_check': return '2/4';
-            case 'preview':   return '3/4';
-            case 'loading':   return '4/4';
+            case 'idle':      return '1/3';
+            case 'preview':   return '2/3';
+            case 'loading':   return '3/3';
             default:          return '';
         }
     };
@@ -512,13 +308,6 @@ export default function BulkImportWeights() {
         switch (step) {
             case 'idle':      return <IdleScreen onPick={pickAndParse} />;
             case 'reading':   return <ReadingScreen progress={progress} />;
-            case 'lot_check': return (
-                <LotCheckScreen
-                    lots={unresolvedLots}
-                    onResolve={resolveLot}
-                    onContinue={finalizeLotCheck}
-                />
-            );
             case 'preview':   return (
                 <PreviewScreen rows={rows} validCount={validCount} invalidCount={invalidCount}
                     onRemove={removeRow} onLoad={loadToDatabase} onCancel={reset} />
@@ -603,34 +392,6 @@ const s = StyleSheet.create({
     colRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 3 },
     colDot: { width: 5, height: 5, borderRadius: 3 },
     colTxt: { fontSize: 12, color: Colors.textSecondary },
-
-    // Lot check
-    lotCheckInfo: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#FEF3C7', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, margin: Spacing.lg, borderRadius: BorderRadius.md },
-    lotCheckInfoTxt: { flex: 1, fontSize: 13, color: '#92400E', lineHeight: 19 },
-    lotRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: Spacing.md, marginBottom: Spacing.sm, ...Shadows.card, borderLeftWidth: 4, borderLeftColor: Colors.error },
-    lotRowResolved: { borderLeftColor: Colors.success },
-    lotRowLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-    lotRowName: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
-    lotRowStatus: { fontSize: 12, marginTop: 2 },
-    createLotBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primary, paddingHorizontal: 12, paddingVertical: 7, borderRadius: BorderRadius.md },
-    createLotBtnTxt: { fontSize: 13, fontWeight: '800', color: Colors.white },
-
-    // Modal
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalSheet: { backgroundColor: Colors.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: Spacing.lg, paddingBottom: Spacing.xxl },
-    modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-    modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary },
-    modalLotName: { fontSize: 14, color: Colors.primary, fontWeight: '700', marginBottom: Spacing.lg },
-    modalSectionLabel: { fontSize: 11, fontWeight: '800', color: Colors.textSecondary, letterSpacing: 1, marginBottom: 8, marginTop: Spacing.sm },
-    typeRow: { flexDirection: 'row', gap: 8, marginBottom: Spacing.md },
-    typeChip: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.background },
-    typeChipActive: { borderColor: Colors.primary, backgroundColor: Colors.primary },
-    typeChipTxt: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary },
-    typeChipTxtActive: { color: Colors.white },
-    noPasturesTxt: { fontSize: 13, color: Colors.error, marginBottom: Spacing.md },
-    pastureRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: Spacing.sm, borderRadius: BorderRadius.md },
-    pastureRowActive: { backgroundColor: Colors.primary + '10' },
-    pastureRowTxt: { fontSize: 14, color: Colors.textPrimary },
 
     previewSummary: { flexDirection: 'row', gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.white, ...Shadows.card },
     summaryChip: { flex: 1, alignItems: 'center', paddingVertical: 8, backgroundColor: Colors.background, borderRadius: BorderRadius.md },

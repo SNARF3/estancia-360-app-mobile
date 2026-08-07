@@ -1,76 +1,32 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
+import { AnimalMultiPickerModal } from '../../../../../../components/common/AnimalMultiPickerModal';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { Colors } from '../../../../../../constants/theme';
-import { getSession } from '../../../../../../hooks/auth/use-Auth';
-import { getDb } from '../../../../../../hooks/db.sqlite/db-pool';
-import { registerSale } from '../../../../../../hooks/db.sqlite/repositories/events';
+import { useAnimalSale } from '../../../../../../hooks/movements/use-AnimalSale';
 import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
 
 export default function SaleForm() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { animalCode: paramCode } = useLocalSearchParams<{ animalCode?: string }>();
-
-    const [animalCode, setAnimalCode] = useState('');
-    const [buyer, setBuyer] = useState('');
-    const [destination, setDestination] = useState('');
-    const [salePrice, setSalePrice] = useState('');
-    const [pricePerKg, setPricePerKg] = useState('');
-    const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0]);
-    const [notes, setNotes] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { formData, updateField, addAnimals, removeAnimal, saveRecord, resetForm, loading, error } = useAnimalSale();
     const [pickerVisible, setPickerVisible] = useState(false);
 
-    useEffect(() => {
-        if (paramCode) setAnimalCode(paramCode.toUpperCase());
-    }, [paramCode]);
-
     const handleSave = async () => {
-        setError(null);
-        if (!animalCode.trim()) { setError('El código del animal es obligatorio.'); return; }
-        if (!eventDate) { setError('La fecha es obligatoria.'); return; }
-
-        setLoading(true);
-        try {
-            const session = await getSession();
-            if (!session) throw new Error('No hay sesión activa.');
-            const db = await getDb();
-
-            const animal = await db.getFirstAsync<{ id: string }>(
-                `SELECT id FROM ranch_animals WHERE id_ranch = ? AND code = ? COLLATE NOCASE LIMIT 1`,
-                [session.id_ranch, animalCode.trim()]
-            );
-            if (!animal) { setError(`No se encontró el animal "${animalCode}".`); setLoading(false); return; }
-
-            await registerSale({
-                id_user: session.id_user,
-                id_ranch_animal: animal.id,
-                buyer: buyer || undefined,
-                destination: destination || undefined,
-                sale_price: salePrice ? parseFloat(salePrice) : undefined,
-                price_per_kg: pricePerKg ? parseFloat(pricePerKg) : undefined,
-                event_date: new Date(eventDate).toISOString(),
-                notes: notes || undefined,
-            });
-
+        const count = formData.animals.length;
+        const ok = await saveRecord();
+        if (ok) {
             Alert.alert(
                 'Venta registrada',
-                `La venta de ${animalCode} fue registrada exitosamente.`,
+                `La venta de ${count} animal${count === 1 ? '' : 'es'} quedó pendiente de confirmación.`,
                 [
-                    { text: 'Nueva venta', onPress: () => { setAnimalCode(''); setBuyer(''); setDestination(''); setSalePrice(''); setPricePerKg(''); setNotes(''); setError(null); } },
+                    { text: 'Nueva venta', onPress: resetForm },
                     { text: 'Volver', onPress: () => router.back() },
                 ]
             );
-        } catch (e: any) {
-            setError(e.message ?? 'Error al registrar la venta.');
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -91,17 +47,22 @@ export default function SaleForm() {
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Animal</Text>
-                    <Text style={styles.label}>CÓDIGO DEL ANIMAL *</Text>
+                    <Text style={styles.sectionTitle}>Animales ({formData.animals.length})</Text>
+                    {formData.animals.map((a) => (
+                        <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}>
+                            <Text style={{ fontSize: 16, color: Colors.textPrimary, fontWeight: 'bold' }}>{a.code}</Text>
+                            <TouchableOpacity onPress={() => removeAnimal(a.id)}>
+                                <Ionicons name="close-circle" size={22} color={Colors.error} />
+                            </TouchableOpacity>
+                        </View>
+                    ))}
                     <TouchableOpacity
-                        style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                        style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }]}
                         onPress={() => setPickerVisible(true)}
                         activeOpacity={0.7}
                     >
-                        <Text style={{ fontSize: 16, color: animalCode ? Colors.textPrimary : Colors.textDisabled }}>
-                            {animalCode || 'Buscar animal...'}
-                        </Text>
-                        <Ionicons name="search" size={18} color={Colors.textDisabled} />
+                        <Text style={{ fontSize: 16, color: Colors.textDisabled }}>Agregar animales...</Text>
+                        <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
                     </TouchableOpacity>
                 </View>
 
@@ -109,22 +70,14 @@ export default function SaleForm() {
                     <Text style={styles.sectionTitle}>Datos de la Venta</Text>
 
                     <Text style={styles.label}>FECHA *</Text>
-                    <DateSelector value={eventDate} onChange={setEventDate} label="" />
+                    <DateSelector value={formData.eventDate} onChange={(d) => updateField('eventDate', d)} label="" />
 
-                    <Text style={styles.label}>COMPRADOR</Text>
+                    <Text style={styles.label}>COMPRADOR *</Text>
                     <TextInput
                         style={styles.input}
                         placeholder="Nombre del comprador o frigorífico"
-                        value={buyer}
-                        onChangeText={setBuyer}
-                    />
-
-                    <Text style={styles.label}>DESTINO</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="Frigorífico, estancia, mercado..."
-                        value={destination}
-                        onChangeText={setDestination}
+                        value={formData.buyer}
+                        onChangeText={(v) => updateField('buyer', v)}
                     />
 
                     <View style={{ flexDirection: 'row', gap: 12 }}>
@@ -133,8 +86,8 @@ export default function SaleForm() {
                             <TextInput
                                 style={styles.input}
                                 placeholder="0.00"
-                                value={salePrice}
-                                onChangeText={setSalePrice}
+                                value={formData.totalPrice}
+                                onChangeText={(v) => updateField('totalPrice', v)}
                                 keyboardType="decimal-pad"
                             />
                         </View>
@@ -143,8 +96,8 @@ export default function SaleForm() {
                             <TextInput
                                 style={styles.input}
                                 placeholder="0.00"
-                                value={pricePerKg}
-                                onChangeText={setPricePerKg}
+                                value={formData.pricePerKg}
+                                onChangeText={(v) => updateField('pricePerKg', v)}
                                 keyboardType="decimal-pad"
                             />
                         </View>
@@ -154,8 +107,8 @@ export default function SaleForm() {
                     <TextInput
                         style={styles.textArea}
                         placeholder="Notas adicionales..."
-                        value={notes}
-                        onChangeText={setNotes}
+                        value={formData.notes}
+                        onChangeText={(v) => updateField('notes', v)}
                         multiline
                         numberOfLines={3}
                     />
@@ -185,10 +138,11 @@ export default function SaleForm() {
                 </TouchableOpacity>
             </ScrollView>
 
-            <AnimalPickerModal
+            <AnimalMultiPickerModal
                 visible={pickerVisible}
                 onClose={() => setPickerVisible(false)}
-                onSelect={(code) => setAnimalCode(code)}
+                onConfirm={addAnimals}
+                initialSelected={formData.animals.map((a) => a.code)}
             />
         </KeyboardAvoidingView>
     );

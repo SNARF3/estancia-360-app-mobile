@@ -1,25 +1,15 @@
 import { useState } from 'react';
-// Cambiamos el import de postRequest a putRequest
-import { putRequest } from '../db.postre-connection/db.connection';
+import { postRequest } from '../db.postre-connection/db.connection';
 
-// Interfaces basadas en tu documentación
-interface ChangePasswordRequest {
+interface ResetPasswordRequest {
   email: string;
+  code: string;
   password: string;
 }
 
-interface ChangePasswordSuccessResponse {
+interface ResetPasswordResponse {
   message: string;
 }
-
-interface ChangePasswordErrorResponse {
-  message: string | string[]; 
-  error?: string;
-  statusCode?: number;
-}
-
-// Unión de tipos
-type ChangePasswordResponse = ChangePasswordSuccessResponse | ChangePasswordErrorResponse;
 
 export const useUserChangePassword = () => {
   // Estados del formulario
@@ -34,7 +24,10 @@ export const useUserChangePassword = () => {
   // Expresión regular
   const passwordRegex = /(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{6,}/;
 
-  const changePassword = async (email: string): Promise<boolean> => {
+  // Recuperar contraseña — paso 2: manda email + código + nueva contraseña juntos.
+  // El backend (POST /auth/reset-password) recién ahí verifica el código contra el
+  // hash guardado y su vencimiento; si es válido, aplica la contraseña.
+  const changePassword = async (email: string, code: string): Promise<boolean> => {
     setError(null);
     setSuccess(false);
 
@@ -57,43 +50,21 @@ export const useUserChangePassword = () => {
     setLoading(true);
 
     try {
-      const payload: ChangePasswordRequest = {
-        email: email,
-        password: newPassword
+      const payload: ResetPasswordRequest = {
+        email,
+        code,
+        password: newPassword,
       };
 
-      console.log('📤 Enviando cambio de contraseña (PUT):', payload);
+      await postRequest<ResetPasswordResponse>('auth/reset-password', payload);
 
-      // AQUÍ ESTÁ EL CAMBIO: Usamos putRequest
-      const response = await putRequest<ChangePasswordResponse>(
-        'estancia-360/auth/change-password',
-        payload
-      );
-
-      console.log('📥 Respuesta cambio contraseña:', response);
-
-      // Verificamos si es un error
-      const isError = 'error' in response || 'statusCode' in response;
-
-      if (isError) {
-        const errorResponse = response as ChangePasswordErrorResponse;
-        const msg = Array.isArray(errorResponse.message) 
-          ? errorResponse.message[0] 
-          : errorResponse.message;
-        
-        setError(msg || 'Error al cambiar la contraseña');
-        return false;
-      }
-
-      // Éxito
       setSuccess(true);
       return true;
-
     } catch (err: any) {
-      console.log('❌ Error en petición:', err);
+      console.log('Error en petición:', err);
       const msg = err?.response?.data?.message;
       const finalMsg = Array.isArray(msg) ? msg[0] : (msg || 'Ocurrió un error inesperado');
-      
+
       setError(finalMsg);
       return false;
     } finally {
@@ -109,6 +80,6 @@ export const useUserChangePassword = () => {
     loading,
     error,
     success,
-    changePassword
+    changePassword,
   };
 };
