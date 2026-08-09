@@ -19,7 +19,7 @@ export const useGetAnimalsData = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await getRequest<any>('estancia-360/animal-breeds');
+            const response = await getRequest<any>('animal-breeds');
             console.log('Breeds API response:', JSON.stringify(response, null, 2));
 
             if (response) {

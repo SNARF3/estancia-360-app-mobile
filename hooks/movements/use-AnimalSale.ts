@@ -1,42 +1,44 @@
 import { useState } from 'react';
 import { getSession } from '../auth/use-Auth';
-import { getDb } from '../db.sqlite/db-pool';
 import { registerMovement } from '../db.sqlite/repositories/events';
 
-export interface TransferAnimalRow {
+export interface SaleAnimalRow {
     id: string;
     code: string;
 }
 
-export interface TransferFormData {
-    animals: TransferAnimalRow[];
-    destLotId: string;
-    destLotName: string;
+export interface SaleFormData {
+    animals: SaleAnimalRow[];
+    buyer: string;
+    totalPrice: string;
+    pricePerKg: string;
     eventDate: string;
     notes: string;
 }
 
-const INITIAL: TransferFormData = {
+const INITIAL: SaleFormData = {
     animals: [],
-    destLotId: '',
-    destLotName: '',
+    buyer: '',
+    totalPrice: '',
+    pricePerKg: '',
     eventDate: new Date().toISOString().split('T')[0],
     notes: '',
 };
 
-export function useAnimalTransfer() {
-    const [formData, setFormData] = useState<TransferFormData>(INITIAL);
+/** Venta: queda pending hasta confirmar/rechazar cada animal (ver use-PendingSales.ts). */
+export function useAnimalSale() {
+    const [formData, setFormData] = useState<SaleFormData>(INITIAL);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
 
-    const updateField = <K extends keyof TransferFormData>(field: K, value: TransferFormData[K]) => {
+    const updateField = <K extends keyof SaleFormData>(field: K, value: SaleFormData[K]) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
         setError(null);
         setSuccess(false);
     };
 
-    const addAnimals = (animals: TransferAnimalRow[]) => {
+    const addAnimals = (animals: SaleAnimalRow[]) => {
         setFormData((prev) => {
             const existingIds = new Set(prev.animals.map((a) => a.id));
             const merged = [...prev.animals, ...animals.filter((a) => !existingIds.has(a.id))];
@@ -53,36 +55,30 @@ export function useAnimalTransfer() {
         setSuccess(false);
 
         if (formData.animals.length === 0) { setError('Seleccioná al menos un animal.'); return false; }
-        if (!formData.destLotId) { setError('Seleccioná el lote de destino.'); return false; }
+        if (!formData.buyer.trim()) { setError('El comprador es obligatorio.'); return false; }
         if (!formData.eventDate) { setError('La fecha es obligatoria.'); return false; }
 
         setLoading(true);
         try {
             const session = await getSession();
             if (!session) throw new Error('No hay sesión activa.');
-            const db = await getDb();
-
-            for (const a of formData.animals) {
-                const current = await db.getFirstAsync<{ id_lot: string | null }>(`SELECT id_lot FROM ranch_animals WHERE id = ?`, [a.id]);
-                if (current?.id_lot === formData.destLotId) {
-                    setError(`${a.code} ya está en el lote destino.`);
-                    return false;
-                }
-            }
 
             await registerMovement({
                 id_user: session.id_user,
                 id_ranch: session.id_ranch,
-                movement_type: 'pasture_transfer',
+                movement_type: 'sale',
                 event_date: new Date(formData.eventDate).toISOString(),
+                counterpart_name: formData.buyer.trim(),
+                total_price: formData.totalPrice ? parseFloat(formData.totalPrice) : undefined,
+                price_per_kg: formData.pricePerKg ? parseFloat(formData.pricePerKg) : undefined,
                 notes: formData.notes || undefined,
-                animals: formData.animals.map((a) => ({ id_ranch_animal: a.id, id_lot_dest: formData.destLotId })),
+                animals: formData.animals.map((a) => ({ id_ranch_animal: a.id })),
             });
 
             setSuccess(true);
             return true;
         } catch (e: any) {
-            setError(e.message ?? 'Error al registrar el traslado.');
+            setError(e.message ?? 'Error al registrar la venta.');
             return false;
         } finally {
             setLoading(false);

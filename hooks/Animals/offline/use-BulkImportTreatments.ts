@@ -66,7 +66,8 @@ export function useBulkImportTreatments() {
             });
             setProgress(35);
             const workbook = xlsxRead(base64, { type: 'base64', cellDates: true });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const sheetName = workbook.SheetNames.includes('Carga_Tratamientos') ? 'Carga_Tratamientos' : workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
             const jsonRows = xlsxUtils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][];
             setProgress(50);
             if (jsonRows.length < 2) { setErrorMsg('El archivo no contiene datos.'); setStep('error'); return; }
@@ -82,15 +83,19 @@ export function useBulkImportTreatments() {
                 .filter(r => r.some((c: any) => c !== null && c !== ''))
                 .map((r, i) => {
                     const errors: string[] = [];
-                    const animalCode = r[0]?.toString().trim().toUpperCase() ?? null;
+                    // ID_CARGA, FECHA, CODIGO_ANIMAL, LOTE_ACTUAL, ENFERMEDAD_DIAGNOSTICO,
+                    // MEDICAMENTO, DOSIS, DURACION_DIAS, DIAS_RETIRO, FIN_RETIRO, RESPONSABLE,
+                    // NOTAS, VALIDACION (plantilla real) — FIN_RETIRO se ignora, el móvil lo
+                    // recalcula igual que el backend (eventDate + withdrawal_days).
                     const eventDate = mapDate(r[1]);
-                    const illness = r[2] ? r[2].toString().trim() : null;
-                    const medication = r[3] ? r[3].toString().trim() : null;
-                    const dose = r[4] ? r[4].toString().trim() : null;
-                    const duration_days = r[5] ? (parseInt(r[5]) || null) : null;
-                    const withdrawal_days = r[6] ? (parseInt(r[6]) || null) : null;
-                    const responsible = r[7] ? r[7].toString().trim() : null;
-                    const notes = r[8] ? r[8].toString().trim() : null;
+                    const animalCode = r[2]?.toString().trim().toUpperCase() ?? null;
+                    const illness = r[4] ? r[4].toString().trim() : null;
+                    const medication = r[5] ? r[5].toString().trim() : null;
+                    const dose = r[6] ? r[6].toString().trim() : null;
+                    const duration_days = r[7] ? (parseInt(r[7]) || null) : null;
+                    const withdrawal_days = r[8] ? (parseInt(r[8]) || null) : null;
+                    const responsible = r[10] ? r[10].toString().trim() : null;
+                    const notes = r[11] ? r[11].toString().trim() : null;
                     if (!animalCode) errors.push('Código de animal vacío');
                     if (!eventDate) errors.push('Fecha inválida');
                     if (!medication) errors.push('Medicamento requerido');

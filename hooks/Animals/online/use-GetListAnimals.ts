@@ -52,7 +52,7 @@ export const useGetListAnimals = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await getRequest<ListAnimalsResponse>(`estancia-360/ranch-animals/${idRanch}`);
+            const response = await getRequest<ListAnimalsResponse>(`ranch-animals/${idRanch}`);
             if (response && response.data) {
                 // Ensure data is mapped correctly based on the provided JSON structure
                 const animalsData = Array.isArray(response.data) ? response.data : response.data.data;

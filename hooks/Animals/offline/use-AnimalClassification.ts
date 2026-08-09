@@ -23,7 +23,7 @@ const CLASS_CATEGORY_MAP: Record<number, 'Ternero' | 'Destetado' | 'Adulto'> = {
     7: 'Adulto',    // Vaquilla
     8: 'Adulto',    // Vaca
     9: 'Adulto',    // Hembra Esterilizada
-    10: 'Adulto',    // Toro
+    10: 'Adulto',    // Torillo
     11: 'Adulto',    // Novillo
 };
 
@@ -77,7 +77,7 @@ export function classifyAnimal(animal: {
         return { label: 'Vaquilla', category: 'Adulto', ...CATEGORY_STYLE.Adulto };
     }
     if (animal.isCastrated) return { label: 'Novillo', category: 'Adulto', ...CATEGORY_STYLE.Adulto };
-    return { label: 'Toro', category: 'Adulto', ...CATEGORY_STYLE.Adulto };
+    return { label: 'Torillo', category: 'Adulto', ...CATEGORY_STYLE.Adulto };
 }
 
 // ─── Hook (para AnimalMenuScreen) ─────────────────────────────────────────────

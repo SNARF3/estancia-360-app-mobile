@@ -1,4 +1,9 @@
 // hooks/Animals/offline/use-BulkImportWeights.ts
+// Carga masiva de pesajes desde Excel (Registros_Pesajes.xlsx)
+//
+// La plantilla real NO tiene columna de lote — el lote se resuelve del lote ACTUAL del
+// animal en la base local, igual que hace el formulario individual (use-WeightRecord.ts):
+// si el animal no está asignado a ningún lote, esa fila queda en error (no se puede pesar).
 
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -53,7 +58,7 @@ function mapBodyCondition(raw: any): number | null {
 export interface ValidatedWeightRow {
     rowIndex: number;
     code: string;
-    lot_name: string;
+    lot_name: string;   // solo para mostrar en la preview — el lote ACTUAL del animal, no viene del Excel
     animal_id: string | null;
     lot_id: string | null;
     event_date: string;
@@ -64,18 +69,12 @@ export interface ValidatedWeightRow {
     hasError: boolean;
 }
 
-export interface UnresolvedLot {
-    name: string;
-    id: string | null;  // null = pendiente de resolución
-}
-
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useBulkImportWeights() {
-    const [step, setStep] = useState<'idle' | 'reading' | 'lot_check' | 'preview' | 'loading' | 'done' | 'error'>('idle');
+    const [step, setStep] = useState<'idle' | 'reading' | 'preview' | 'loading' | 'done' | 'error'>('idle');
     const [progress, setProgress] = useState(0);
     const [rows, setRows] = useState<ValidatedWeightRow[]>([]);
-    const [unresolvedLots, setUnresolvedLots] = useState<UnresolvedLot[]>([]);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [loadedCount, setLoadedCount] = useState(0);
     const [skippedCount, setSkippedCount] = useState(0);
@@ -103,7 +102,11 @@ export function useBulkImportWeights() {
             setProgress(30);
 
             const wb = xlsxRead(base64, { type: 'base64', cellDates: true });
-            const ws = wb.Sheets[wb.SheetNames[0]];
+            // La plantilla real (Registros_Pesajes.xlsx) trae "Guía de Uso" como primera hoja
+            // (vacía) y los datos en "Registro Pesajes" — leer por índice 0 a ciegas hacía que
+            // cualquier carga con el archivo real fallara siempre con "el archivo no tiene datos".
+            const sheetName = wb.SheetNames.includes('Registro Pesajes') ? 'Registro Pesajes' : wb.SheetNames[0];
+            const ws = wb.Sheets[sheetName];
             const jsonRows = xlsxUtils.sheet_to_json(ws, { header: 1, defval: null }) as any[][];
 
             setProgress(50);
@@ -113,8 +116,9 @@ export function useBulkImportWeights() {
                 setStep('error'); return;
             }
 
-            // Columnas esperadas:
-            // 0=CÓDIGO ANIMAL, 1=NOMBRE LOTE, 2=FECHA PESAJE, 3=PESO (KG), 4=CONDICIÓN CORPORAL, 5=OBSERVACIONES
+            // Columnas reales (Registros_Pesajes.xlsx → hoja "Registro Pesajes"):
+            // 0=CÓDIGO DEL ANIMAL, 1=FECHA DE PESAJE, 2=PESO KG, 3=CONDICIÓN CORPORAL, 4=OBSERVACIONES
+            // No hay columna de lote — se resuelve del lote ACTUAL del animal en la base local.
             const dataRows = jsonRows.slice(1).filter(r => r.some(c => c !== null && c !== ''));
 
             setProgress(60);
@@ -123,28 +127,15 @@ export function useBulkImportWeights() {
             if (!session) { setErrorMsg('No hay sesión activa.'); setStep('error'); return; }
             const db = await getDb();
 
-            // Resolver animales (una sola consulta)
-            const animals = await db.getAllAsync<{ id: string; code: string }>(
-                `SELECT id, code FROM ranch_animals WHERE id_ranch = ? AND id_status != 3`,
+            // Resolver animales junto con su lote actual y el nombre de ese lote (una sola consulta)
+            const animals = await db.getAllAsync<{ id: string; code: string; id_lot: string | null; lot_name: string | null }>(
+                `SELECT a.id, a.code, a.id_lot, l.name AS lot_name
+                 FROM ranch_animals a
+                 LEFT JOIN ranch_lots l ON l.id = a.id_lot
+                 WHERE a.id_ranch = ? AND a.id_status != 3`,
                 [session.id_ranch]
             );
-            const animalMap = new Map(animals.map(a => [a.code.toUpperCase(), a.id]));
-
-            setProgress(70);
-
-            // Extraer nombres de lote únicos y resolverlos desde la DB
-            const uniqueLotNames = [...new Set(
-                dataRows
-                    .map(r => r[1] ? r[1].toString().trim() : null)
-                    .filter(Boolean) as string[]
-            )];
-
-            const existingLots = await db.getAllAsync<{ id: string; name: string }>(
-                `SELECT id, name FROM ranch_lots WHERE id_ranch = ?`,
-                [session.id_ranch]
-            );
-            // Mapa nombre (normalizado) → id
-            const lotMap = new Map(existingLots.map(l => [l.name.trim().toLowerCase(), l.id]));
+            const animalMap = new Map(animals.map(a => [a.code.toUpperCase(), a]));
 
             setProgress(80);
 
@@ -152,28 +143,25 @@ export function useBulkImportWeights() {
             const validated: ValidatedWeightRow[] = dataRows.map((r, i) => {
                 const errors: string[] = [];
                 const code = r[0] ? r[0].toString().trim().toUpperCase() : null;
-                const lotNameRaw = r[1] ? r[1].toString().trim() : null;
-                const eventDate = mapDate(r[2]);
-                const weight = mapWeight(r[3]);
-                const bc = mapBodyCondition(r[4]);
-                const notes = r[5] ? r[5].toString().trim() : null;
+                const eventDate = mapDate(r[1]);
+                const weight = mapWeight(r[2]);
+                const bc = mapBodyCondition(r[3]);
+                const notes = r[4] ? r[4].toString().trim() : null;
 
-                const animalId = code ? (animalMap.get(code) ?? null) : null;
-                const lotId = lotNameRaw ? (lotMap.get(lotNameRaw.toLowerCase()) ?? null) : null;
+                const animal = code ? animalMap.get(code) ?? null : null;
 
                 if (!code) errors.push('Código de animal vacío');
-                else if (!animalId) errors.push(`Animal "${code}" no encontrado en la estancia`);
-                if (!lotNameRaw) errors.push('Nombre de lote vacío');
-                else if (!lotId) errors.push(`Lote "${lotNameRaw}" no encontrado localmente`);
-                if (!eventDate) errors.push(`Fecha inválida: "${r[2]}"`);
-                if (weight === null) errors.push(`Peso inválido: "${r[3]}" (debe ser número > 0)`);
+                else if (!animal) errors.push(`Animal "${code}" no encontrado en la estancia`);
+                else if (!animal.id_lot) errors.push(`El animal "${code}" no está asignado a ningún lote — asignalo desde Potreros antes de importar el pesaje`);
+                if (!eventDate) errors.push(`Fecha inválida: "${r[1]}"`);
+                if (weight === null) errors.push(`Peso inválido: "${r[2]}" (debe ser número > 0)`);
 
                 return {
                     rowIndex: i + 2,
                     code: code ?? `SIN_CODIGO_${i + 2}`,
-                    lot_name: lotNameRaw ?? '',
-                    animal_id: animalId,
-                    lot_id: lotId,
+                    lot_name: animal?.lot_name ?? '',
+                    animal_id: animal?.id ?? null,
+                    lot_id: animal?.id_lot ?? null,
                     event_date: eventDate ?? new Date().toISOString().split('T')[0],
                     weight: weight ?? 0,
                     body_condition: bc,
@@ -185,15 +173,7 @@ export function useBulkImportWeights() {
 
             setProgress(100);
             setRows(validated);
-
-            // Detectar lotes no resueltos
-            const notFound = uniqueLotNames.filter(name => !lotMap.has(name.toLowerCase()));
-            if (notFound.length > 0) {
-                setUnresolvedLots(notFound.map(name => ({ name, id: null })));
-                setStep('lot_check');
-            } else {
-                setStep('preview');
-            }
+            setStep('preview');
 
         } catch (e: any) {
             console.error('BulkImportWeights:', e);
@@ -202,31 +182,13 @@ export function useBulkImportWeights() {
         }
     }, []);
 
-    // ── 2. Resolver lote (llamado desde UI tras crear o confirmar un lote) ────
-
-    const resolveLot = useCallback((name: string, id: string) => {
-        setUnresolvedLots(prev => prev.map(l => l.name === name ? { ...l, id } : l));
-        // Actualizar rows: asignar lot_id y limpiar el error de lote
-        setRows(prev => prev.map(r => {
-            if (r.lot_name.toLowerCase() !== name.toLowerCase()) return r;
-            const errors = r.errors.filter(e => !e.includes('Lote') && !e.toLowerCase().includes('lote'));
-            return { ...r, lot_id: id, errors, hasError: errors.length > 0 };
-        }));
-    }, []);
-
-    // ── 3. Confirmar resolución de lotes y avanzar a preview ─────────────────
-
-    const finalizeLotCheck = useCallback(() => {
-        setStep('preview');
-    }, []);
-
-    // ── 4. Eliminar fila ──────────────────────────────────────────────────────
+    // ── 2. Eliminar fila ──────────────────────────────────────────────────────
 
     const removeRow = useCallback((rowIndex: number) => {
         setRows(prev => prev.filter(r => r.rowIndex !== rowIndex));
     }, []);
 
-    // ── 5. Cargar a SQLite ────────────────────────────────────────────────────
+    // ── 3. Cargar a SQLite ────────────────────────────────────────────────────
 
     const loadToDatabase = useCallback(async () => {
         const validRows = rows.filter(r => !r.hasError);
@@ -295,19 +257,19 @@ export function useBulkImportWeights() {
         }
     }, [rows]);
 
-    // ── 6. Reset ──────────────────────────────────────────────────────────────
+    // ── 4. Reset ──────────────────────────────────────────────────────────────
 
     const reset = useCallback(() => {
         setStep('idle'); setProgress(0); setRows([]);
-        setUnresolvedLots([]); setErrorMsg(null);
+        setErrorMsg(null);
         setLoadedCount(0); setSkippedCount(0);
     }, []);
 
     return {
-        step, progress, rows, unresolvedLots, errorMsg,
+        step, progress, rows, errorMsg,
         loadedCount, skippedCount,
         validCount: rows.filter(r => !r.hasError).length,
         invalidCount: rows.filter(r => r.hasError).length,
-        pickAndParse, resolveLot, finalizeLotCheck, removeRow, loadToDatabase, reset,
+        pickAndParse, removeRow, loadToDatabase, reset,
     };
 }

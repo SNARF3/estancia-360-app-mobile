@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 
 import { Colors } from '../../../../constants/theme';
+import { getToken, saveSession } from '../../../../hooks/auth/use-Auth';
+import { getRequest } from '../../../../hooks/db.postre-connection/db.connection';
 import { useWorkerWithRanch } from '../../../../hooks/workers/use-WorkerWithRanch'; // Ajusta la ruta si es necesario
 
 import { showMessage } from 'react-native-flash-message';
@@ -89,6 +91,34 @@ export default function QrScannerRanch() {
             const success = await linkWorkerToRanch(userId, ranchIdParsed);
 
             if (success) {
+                // Sin esto, la sesión local (AsyncStorage user_data + SQLite local_session)
+                // se queda sin id_ranch hasta el próximo login manual — el resto de la app
+                // (repositorios, pantallas de admin) depende de esa sesión para saber en qué
+                // estancia operar, así que quedaría "vinculado" en el servidor pero inutilizable
+                // en el dispositivo hasta cerrar sesión y volver a entrar.
+                try {
+                    const accessToken = await getToken();
+                    const ranchResponse = await getRequest<any>(`ranches/${ranchIdParsed}`);
+                    const ranch = ranchResponse?.data ?? ranchResponse;
+                    const currentMember = ranch?.ranchUsers?.find((ru: any) => ru.user?.id === userId);
+
+                    if (accessToken && ranch?.id) {
+                        await saveSession({
+                            accessToken,
+                            idUser: userId,
+                            idRole: userData.idRole,
+                            email: userData.email,
+                            fullname: currentMember?.user?.fullname ?? userData.fullname,
+                            id_ranch: ranch.id,
+                            ranch_name: ranch.name,
+                            production_types: (ranch.productionTypes ?? []).map((pt: any) => pt.idProductionType),
+                            ranch_role: currentMember?.role?.id ?? 2,
+                        });
+                    }
+                } catch (refreshError) {
+                    console.error('No se pudo refrescar la sesión local tras vincular:', refreshError);
+                }
+
                 showMessage({
                     message: "¡Vinculación Exitosa!",
                     description: "Te has unido a la estancia correctamente.",

@@ -89,7 +89,11 @@ const MODULE_DEFS: Omit<ModuleGroup, 'count' | 'syncable'>[] = [
     key: 'movimientos',
     label: 'Movimientos',
     icon: 'swap-horizontal-outline',
-    tables: ['animal_purchases', 'animal_sales', 'animal_transfers', 'animal_exits'],
+    // animal_purchases/animal_sales/animal_transfers fueron reemplazadas por
+    // movements/movement_animals (modelo batch-first, ver migrations.ts v1) — ese trío ya
+    // no existe como tabla. Contar contra las tablas viejas dejaba esta tarjeta siempre en 0
+    // (silenciado por el try/catch de abajo), aunque hubiera compras/ventas/traslados sin subir.
+    tables: ['movements', 'movement_animals', 'animal_exits'],
   },
 ];
 
@@ -106,9 +110,8 @@ const TABLE_LABELS: Record<string, string> = {
   rearing_selections:       'Selecciones recría',
   fattening_entries:        'Ingresos engorde',
   feed_records:             'Alimentación',
-  animal_purchases:         'Compras',
-  animal_sales:             'Ventas',
-  animal_transfers:         'Traslados',
+  movements:                'Movimientos',
+  movement_animals:         'Animales por movimiento',
   animal_exits:             'Bajas',
   vaccinations:             'Vacunaciones',
   treatments:               'Tratamientos',
@@ -165,6 +168,26 @@ async function loadTableRecords(table: string): Promise<PendingRecord[]> {
         `SELECT id, name FROM ${table} WHERE is_synced = 0 ORDER BY created_at DESC`
       );
       return rows.map(r => ({ id: r.id, primary: r.name, tableLabel }));
+    }
+    if (table === 'movements') {
+      const rows = await db.getAllAsync<{ id: string; movement_type: string; counterpart_name: string | null; origin_name: string | null; movement_date: string | null }>(
+        `SELECT id, movement_type, counterpart_name, origin_name, movement_date FROM movements WHERE is_synced = 0 ORDER BY created_at DESC`
+      );
+      const TYPE_LABELS: Record<string, string> = { sale: 'Venta', purchase: 'Compra', pasture_transfer: 'Traslado', ranch_exit: 'Salida a estancia' };
+      return rows.map(r => ({
+        id: r.id,
+        primary: `${TYPE_LABELS[r.movement_type] ?? r.movement_type} — ${r.counterpart_name ?? r.origin_name ?? 'Sin contraparte'}`,
+        secondary: r.movement_date ? fmtDate(r.movement_date) : undefined,
+        tableLabel,
+      }));
+    }
+    if (table === 'movement_animals') {
+      const rows = await db.getAllAsync<{ id: string; code: string | null; new_code: string | null }>(
+        `SELECT ma.id, ra.code, ma.new_code
+         FROM movement_animals ma LEFT JOIN ranch_animals ra ON ra.id = ma.id_ranch_animal
+         WHERE ma.is_synced = 0`
+      );
+      return rows.map(r => ({ id: r.id, primary: r.code ?? r.new_code ?? 'Sin código', tableLabel }));
     }
     if (table === 'animal_declared_history') {
       const rows = await db.getAllAsync<{ id: string; code: string | null }>(

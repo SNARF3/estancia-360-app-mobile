@@ -14,11 +14,21 @@ export default function RootLayout() {
       try {
         const token = await AsyncStorage.getItem('access_token');
         const userData = await AsyncStorage.getItem('user_data');
-        const roleStr = await AsyncStorage.getItem('user_role');
 
         if (token && userData) {
-          const role = roleStr ? parseInt(roleStr) : 2;
-          if (role === 3) {
+          // 'user_role' en AsyncStorage es el rol de SISTEMA (Root=1/Admin=2/Usuario=3) —
+          // casi todo ganadero normal tiene idRole=3 ahí, así que compararlo directo
+          // mandaba a CUALQUIER dueño de estancia a la pantalla de Worker por error.
+          // El rol que importa acá es ranch_role (OWNER=1/WORKER=2/ADMINISTRATOR=3),
+          // que solo viaja adentro de user_data (ver SessionParams en use-Auth.ts).
+          let ranchRole: number | undefined;
+          try {
+            ranchRole = JSON.parse(userData)?.ranch_role;
+          } catch {
+            // user_data corrupto — sigue como no-worker (admin) más abajo
+          }
+
+          if (ranchRole === 2) {
             router.replace('/views/(tabs)/worker/WorkerManagement');
           } else {
             router.replace('/views/(tabs)/admin/management/Management');

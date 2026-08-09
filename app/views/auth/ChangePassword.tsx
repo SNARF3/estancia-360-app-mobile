@@ -22,9 +22,10 @@ import { useUserChangePassword } from '../../../hooks/auth/use-UserChangePasswor
 export default function ChangePasswordScreen() {
   const router = useRouter();
   
-  // 1. Recibimos el email de la pantalla anterior
+  // 1. Recibimos el email y el código (ya validado en formato) de la pantalla anterior
   const params = useLocalSearchParams();
   const email = params.email as string;
+  const code = params.code as string;
 
   // 2. Usamos el hook para manejar lógica y estados
   const {
@@ -38,14 +39,14 @@ export default function ChangePasswordScreen() {
   } = useUserChangePassword();
 
   const handleResetPassword = async () => {
-    // Validación de seguridad por si llegaron aquí sin email
-    if (!email) {
-      Alert.alert('Error', 'No se ha detectado el correo electrónico del usuario.');
+    // Validación de seguridad por si llegaron aquí sin email/código
+    if (!email || !code) {
+      Alert.alert('Error', 'No se ha detectado el correo o el código de verificación.');
       return;
     }
 
     // 3. Llamamos a la función del hook
-    const isSuccess = await changePassword(email);
+    const isSuccess = await changePassword(email, code);
 
     if (isSuccess) {
       Alert.alert('Éxito', 'Tu contraseña ha sido actualizada', [

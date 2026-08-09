@@ -108,9 +108,11 @@ export function useParturition() {
                 event_date: new Date(formData.eventDate).toISOString(),
                 birth_type: formData.birth_type,
                 cria_status: formData.cria_status,
-                cria_weight: formData.cria_weight
-                    ? Math.round(formData.cria_weight * 1000) // kg → gramos
-                    : undefined,
+                // parturitions.cria_weight es NUMERIC(6,2) EN KG en el backend (db-estancia-360/
+                // schema/breeding-modules/parturitions/create.sql) — el formulario ya pide el
+                // peso en kg ("PESO AL NACER (KG)"). Un ×1000 acá (había uno, "kg → gramos")
+                // desbordaba esa columna en cualquier sync con peso cargado.
+                cria_weight: formData.cria_weight ?? undefined,
                 mother_condition: formData.mother_condition,
                 notes: formData.notes,
                 cria: formData.cria_status === 'alive' ? {

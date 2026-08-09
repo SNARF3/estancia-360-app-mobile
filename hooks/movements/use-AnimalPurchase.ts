@@ -1,27 +1,40 @@
 import { useState } from 'react';
 import { getSession } from '../auth/use-Auth';
-import { registerPurchase } from '../db.sqlite/repositories/events';
+import { registerMovement } from '../db.sqlite/repositories/events';
+
+export interface NewPurchaseAnimalRow {
+    code: string;
+    sex: 'M' | 'F';
+    idBreed: number;
+    breedName: string;
+    idAnimalClass: number;
+    className: string;
+    birthdate: string;
+    weight: string;
+    idLot: string;
+    lotName: string;
+    idProductiveStatus?: number;
+}
 
 export interface PurchaseFormData {
-    animalCode: string;
+    animals: NewPurchaseAnimalRow[];
     supplier: string;
-    origin: string;
-    purchasePrice: string;
+    totalPrice: string;
     pricePerKg: string;
     eventDate: string;
     notes: string;
 }
 
 const INITIAL: PurchaseFormData = {
-    animalCode: '',
+    animals: [],
     supplier: '',
-    origin: '',
-    purchasePrice: '',
+    totalPrice: '',
     pricePerKg: '',
     eventDate: new Date().toISOString().split('T')[0],
     notes: '',
 };
 
+/** Compra: cada animal es NUEVO (el servidor lo crea con origin=purchased, igual que este hook localmente). */
 export function useAnimalPurchase() {
     const [formData, setFormData] = useState<PurchaseFormData>(INITIAL);
     const [loading, setLoading] = useState(false);
@@ -29,40 +42,64 @@ export function useAnimalPurchase() {
     const [success, setSuccess] = useState(false);
 
     const updateField = <K extends keyof PurchaseFormData>(field: K, value: PurchaseFormData[K]) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
+        setFormData((prev) => ({ ...prev, [field]: value }));
         setError(null);
         setSuccess(false);
+    };
+
+    const addAnimal = (animal: NewPurchaseAnimalRow) => {
+        setFormData((prev) => ({ ...prev, animals: [...prev.animals, animal] }));
+    };
+
+    const removeAnimal = (index: number) => {
+        setFormData((prev) => ({ ...prev, animals: prev.animals.filter((_, i) => i !== index) }));
     };
 
     const saveRecord = async (): Promise<boolean> => {
         setError(null);
         setSuccess(false);
 
-        if (!formData.animalCode.trim()) { setError('El código del animal es obligatorio.'); return false; }
+        if (formData.animals.length === 0) { setError('Agregá al menos un animal.'); return false; }
         if (!formData.eventDate) { setError('La fecha es obligatoria.'); return false; }
+        const codes = formData.animals.map((a) => a.code.trim().toUpperCase());
+        if (new Set(codes).size !== codes.length) { setError('Hay códigos de animal repetidos en esta compra.'); return false; }
 
         setLoading(true);
         try {
-            const { getDb } = await import('../db.sqlite/db-pool');
             const session = await getSession();
             if (!session) throw new Error('No hay sesión activa.');
+
+            const { getDb } = await import('../db.sqlite/db-pool');
             const db = await getDb();
+            for (const code of codes) {
+                const existing = await db.getFirstAsync<{ id: string }>(
+                    `SELECT id FROM ranch_animals WHERE id_ranch = ? AND code = ? COLLATE NOCASE LIMIT 1`,
+                    [session.id_ranch, code]
+                );
+                if (existing) { setError(`Ya existe un animal con código "${code}" en esta estancia.`); return false; }
+            }
 
-            const animal = await db.getFirstAsync<{ id: string }>(
-                `SELECT id FROM ranch_animals WHERE id_ranch = ? AND code = ? COLLATE NOCASE LIMIT 1`,
-                [session.id_ranch, formData.animalCode.trim()]
-            );
-            if (!animal) { setError(`No se encontró el animal "${formData.animalCode}".`); return false; }
-
-            await registerPurchase({
+            await registerMovement({
                 id_user: session.id_user,
-                id_ranch_animal: animal.id,
-                supplier: formData.supplier || undefined,
-                origin: formData.origin || undefined,
-                purchase_price: formData.purchasePrice ? parseFloat(formData.purchasePrice) : undefined,
-                price_per_kg: formData.pricePerKg ? parseFloat(formData.pricePerKg) : undefined,
+                id_ranch: session.id_ranch,
+                movement_type: 'purchase',
                 event_date: new Date(formData.eventDate).toISOString(),
+                origin_name: formData.supplier || undefined,
+                total_price: formData.totalPrice ? parseFloat(formData.totalPrice) : undefined,
+                price_per_kg: formData.pricePerKg ? parseFloat(formData.pricePerKg) : undefined,
                 notes: formData.notes || undefined,
+                animals: formData.animals.map((a) => ({
+                    newAnimal: {
+                        code: a.code.trim().toUpperCase(),
+                        sex: a.sex,
+                        id_breed: a.idBreed,
+                        id_animal_class: a.idAnimalClass,
+                        birthdate: a.birthdate,
+                        weight: a.weight ? parseFloat(a.weight) : undefined,
+                        id_lot: a.idLot || undefined,
+                        id_productive_status: a.idProductiveStatus,
+                    },
+                })),
             });
 
             setSuccess(true);
@@ -81,5 +118,5 @@ export function useAnimalPurchase() {
         setSuccess(false);
     };
 
-    return { formData, updateField, saveRecord, resetForm, loading, error, success };
+    return { formData, updateField, addAnimal, removeAnimal, saveRecord, resetForm, loading, error, success };
 }

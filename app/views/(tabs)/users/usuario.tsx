@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarnIcon } from '../../../../components/icons/AppIcons';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../constants/theme';
-import { getUserData, logout, SessionParams } from '../../../../hooks/auth/use-Auth';
+import { getSession, getUserData, logout, SessionParams } from '../../../../hooks/auth/use-Auth';
 import { getDb } from '../../../../hooks/db.sqlite/db-pool';
 
 const ROLE_LABELS: Record<number, string> = {
@@ -39,10 +39,20 @@ export default function UsuarioScreen() {
                 setRoleName(ROLE_LABELS[data.ranch_role] ?? 'Usuario');
             });
 
-            getDb().then(async db => {
-                const animals = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM ranch_animals WHERE status = 1');
+            getSession().then(async session => {
+                if (!session) return;
+                const db = await getDb();
+                // La columna real es id_status (no "status"); esta query fallaba siempre en
+                // silencio (atrapada abajo) y el contador quedaba en "---" para siempre.
+                const animals = await db.getFirstAsync<{ count: number }>(
+                    'SELECT COUNT(*) as count FROM ranch_animals WHERE id_ranch = ? AND id_status = 1',
+                    [session.id_ranch]
+                );
                 setAnimalCount(animals?.count ?? 0);
-                const ha = await db.getFirstAsync<{ total: number }>('SELECT COALESCE(SUM(area_hectares), 0) as total FROM ranch_pastures');
+                const ha = await db.getFirstAsync<{ total: number }>(
+                    'SELECT COALESCE(SUM(area_hectares), 0) as total FROM ranch_pastures WHERE id_ranch = ?',
+                    [session.id_ranch]
+                );
                 setHectareas(ha?.total ?? 0);
             }).catch(() => {});
 

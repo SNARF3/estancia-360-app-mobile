@@ -34,7 +34,7 @@ function inferAnimalClass(sex: 'M' | 'F', isCastrated: boolean, isSterilized: bo
         return 8;                    // Vaca (adulta por defecto al registrar manual)
     } else {
         if (isCastrated) return 11;  // Novillo
-        return 10;                   // Toro
+        return 10;                   // Torillo
     }
 }
 

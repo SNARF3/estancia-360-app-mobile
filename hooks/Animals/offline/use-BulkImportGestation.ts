@@ -1,3 +1,11 @@
+// hooks/Animals/offline/use-BulkImportGestation.ts
+// Carga masiva de diagnósticos de gestación / tactos (Planilla_Gestación.xlsx → hoja "Registro Tactos")
+//
+// La plantilla real es un registro de TACTOS (palpación de preñez), no de servicios
+// reproductivos — reescrito para cargar gestation_diagnoses, vinculado al último servicio
+// reproductivo activo de cada animal (misma regla que el formulario individual,
+// hooks/breeding/use-GestationDiagnosis.ts / RN-12).
+
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useCallback, useState } from 'react';
@@ -27,24 +35,25 @@ function mapDate(raw: any): string | null {
     return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
 }
 
-type ServiceType = 'natural' | 'artificial_insemination' | 'embryo_transfer';
+type DiagnosisResult = 'pregnant' | 'empty';
 
-function mapServiceType(raw: any): ServiceType {
-    if (!raw) return 'natural';
+// La columna real dice "DIAGNÓSTICO" en texto libre (Preñada/Vacía, Positivo/Negativo, etc.)
+function mapDiagnosisResult(raw: any): DiagnosisResult | null {
+    if (!raw) return null;
     const s = raw.toString().trim().toLowerCase();
-    if (s.includes('insem') || s === 'ia') return 'artificial_insemination';
-    if (s.includes('embrion') || s.includes('embrión') || s.includes('emb')) return 'embryo_transfer';
-    return 'natural';
+    if (s.includes('preñ') || s.includes('prenad') || s.includes('positiv')) return 'pregnant';
+    if (s.includes('vac') || s.includes('negativ')) return 'empty';
+    return null;
 }
 
 export interface ValidatedGestationRow {
     rowIndex: number;
     animalCode: string;
     animal_id: string | null;
+    service_id: string | null;
     eventDate: string;
-    service_type: ServiceType;
-    semen_breed: string | null;
-    technician: string | null;
+    result: DiagnosisResult;
+    gestationDays: number | null;
     notes: string | null;
     errors: string[];
     hasError: boolean;
@@ -73,7 +82,11 @@ export function useBulkImportGestation() {
             });
             setProgress(35);
             const workbook = xlsxRead(base64, { type: 'base64', cellDates: true });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            // Planilla_Gestación.xlsx trae "Guía de Uso" como primera hoja (vacía) y los datos
+            // en "Registro Tactos" — leer por índice 0 a ciegas hacía que cualquier carga con
+            // el archivo real fallara siempre con "el archivo no contiene datos".
+            const sheetName = workbook.SheetNames.includes('Registro Tactos') ? 'Registro Tactos' : workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
             const jsonRows = xlsxUtils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][];
             setProgress(50);
             if (jsonRows.length < 2) { setErrorMsg('El archivo no contiene datos.'); setStep('error'); return; }
@@ -84,27 +97,66 @@ export function useBulkImportGestation() {
                 `SELECT id, code FROM ranch_animals WHERE id_ranch = ? AND id_status = 1`, [session.id_ranch]
             );
             const animalMap = new Map(animalRows.map(a => [a.code.toUpperCase(), a.id]));
-            setProgress(70);
-            const validated: ValidatedGestationRow[] = jsonRows.slice(1)
-                .filter(r => r.some((c: any) => c !== null && c !== ''))
-                .map((r, i) => {
-                    const errors: string[] = [];
-                    const animalCode = r[0]?.toString().trim().toUpperCase() ?? null;
-                    const eventDate = mapDate(r[1]);
-                    const service_type = mapServiceType(r[2]);
-                    const semen_breed = r[3] ? r[3].toString().trim() : null;
-                    const technician = r[4] ? r[4].toString().trim() : null;
-                    const notes = r[5] ? r[5].toString().trim() : null;
-                    if (!animalCode) errors.push('Código de animal vacío');
-                    if (!eventDate) errors.push('Fecha inválida');
-                    const animal_id = animalCode ? (animalMap.get(animalCode) ?? null) : null;
-                    if (animalCode && !animal_id) errors.push(`Animal "${animalCode}" no encontrado`);
-                    return {
-                        rowIndex: i + 2, animalCode: animalCode ?? `SIN_CODIGO_${i + 2}`, animal_id,
-                        eventDate: eventDate ?? new Date().toISOString().split('T')[0],
-                        service_type, semen_breed, technician, notes, errors, hasError: errors.length > 0,
-                    };
+            setProgress(65);
+
+            // Columnas reales (Planilla_Gestación.xlsx → "Registro Tactos"):
+            // 0=CÓDIGO DEL ANIMAL, 1=FECHA DE TACTO, 2=TIPO DE SERVICIO (informativo, no se
+            // guarda), 3=DIAGNÓSTICO, 4=MESES DE GESTACIÓN, 5=PESO (OPCIONAL, sin campo destino
+            // en gestation_diagnoses), 6=CONDICIÓN CORPORAL (ídem), 7=OBSERVACIONES.
+            // method siempre 'palpation' — la plantilla entera es de tactos (palpación manual),
+            // no trae columna para elegir método.
+            const dataRowsRaw = jsonRows.slice(1).filter(r => r.some((c: any) => c !== null && c !== ''));
+
+            const validated: ValidatedGestationRow[] = [];
+            for (let i = 0; i < dataRowsRaw.length; i++) {
+                const r = dataRowsRaw[i];
+                const errors: string[] = [];
+                const animalCode = r[0]?.toString().trim().toUpperCase() ?? null;
+                const eventDate = mapDate(r[1]);
+                const result = mapDiagnosisResult(r[3]);
+                const monthsRaw = r[4];
+                const months = monthsRaw !== null && monthsRaw !== undefined && monthsRaw !== ''
+                    ? parseFloat(monthsRaw.toString().replace(',', '.')) : null;
+                const gestationDays = months !== null && !isNaN(months) ? Math.round(months * 30) : null;
+                const notes = r[7] ? r[7].toString().trim() : null;
+
+                if (!animalCode) errors.push('Código de animal vacío');
+                if (!eventDate) errors.push('Fecha de tacto inválida');
+                if (!result) errors.push(`Diagnóstico "${r[3] ?? ''}" no reconocido (usar Preñada/Vacía)`);
+                if (result === 'pregnant' && gestationDays === null) errors.push('Meses de gestación obligatorio cuando el diagnóstico es Preñada');
+
+                const animal_id = animalCode ? (animalMap.get(animalCode) ?? null) : null;
+                if (animalCode && !animal_id) errors.push(`Animal "${animalCode}" no encontrado o no está activo`);
+
+                let service_id: string | null = null;
+                if (animal_id) {
+                    const service = await db.getFirstAsync<{ id: string }>(
+                        `SELECT bs.id FROM breeding_services bs
+                         JOIN animal_events ae ON ae.id = bs.id_event
+                         WHERE ae.id_ranch_animal = ?
+                         ORDER BY ae.event_date DESC LIMIT 1`,
+                        [animal_id]
+                    );
+                    service_id = service?.id ?? null;
+                    if (!service_id) errors.push(`No se encontró un servicio reproductivo previo para "${animalCode}"`);
+                }
+
+                validated.push({
+                    rowIndex: i + 2,
+                    animalCode: animalCode ?? `SIN_CODIGO_${i + 2}`,
+                    animal_id,
+                    service_id,
+                    eventDate: eventDate ?? new Date().toISOString().split('T')[0],
+                    result: result ?? 'empty',
+                    gestationDays,
+                    notes,
+                    errors,
+                    hasError: errors.length > 0,
                 });
+
+                if (i % 20 === 0) setProgress(65 + Math.round((i / dataRowsRaw.length) * 30));
+            }
+
             setProgress(100);
             setRows(validated);
             setStep('preview');
@@ -135,11 +187,11 @@ export function useBulkImportGestation() {
                         const eventId = newId();
                         await db.runAsync(
                             `INSERT INTO animal_events (id, id_user, id_ranch_animal, id_event_type, event_date, notes, created_at, updated_at, is_synced, sync_action) VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
-                            [eventId, session.id_user, row.animal_id!, EVENT_TYPES.SERVICIO, new Date(row.eventDate).toISOString(), row.notes ?? null, ts, ts]
+                            [eventId, session.id_user, row.animal_id!, EVENT_TYPES.DIAGNOSTICO, new Date(row.eventDate).toISOString(), row.notes ?? null, ts, ts]
                         );
                         await db.runAsync(
-                            `INSERT INTO breeding_services (id, id_event, service_type, semen_breed, technician, created_at, updated_at, is_synced, sync_action) VALUES (?,?,?,?,?,?,?,0,'INSERT')`,
-                            [newId(), eventId, row.service_type, row.semen_breed, row.technician, ts, ts]
+                            `INSERT INTO gestation_diagnoses (id, id_event, id_service, method, result, gestation_days, created_at, updated_at, is_synced, sync_action) VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
+                            [newId(), eventId, row.service_id!, 'palpation', row.result, row.gestationDays, ts, ts]
                         );
                     });
                     loaded++;

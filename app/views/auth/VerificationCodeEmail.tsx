@@ -63,13 +63,15 @@ export default function VerificationCodeEmail() {
     const isValid = validateVerificationCode();
 
     if (isValid) {
-      setModalVisible(false); 
-      // Si el código es correcto, vamos a cambiar contraseña
+      setModalVisible(false);
+      // El código todavía no fue verificado contra el servidor (solo se validó el
+      // formato) — se manda junto con la nueva contraseña en ChangePassword, que es
+      // donde ocurre la verificación real (POST /auth/reset-password).
         router.push({
             pathname: '/views/auth/ChangePassword',
-            params: { email: email } 
+            params: { email: email, code: userCode }
         });
-    } 
+    }
     // Si no es válido, el hook actualiza la variable 'error' automáticamente
   };
 

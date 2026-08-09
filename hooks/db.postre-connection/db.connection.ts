@@ -1,7 +1,6 @@
 import axios, { AxiosError, AxiosInstance, AxiosResponse } from 'axios';
-
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://estancia-360-app.onrender.com/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../config/api';
 
 export interface ApiResponse<T = any> {
   success?: boolean;
@@ -18,6 +17,18 @@ const axiosInstance: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+// La mayoría de los endpoints del backend requieren JWT (@UserUp() global salvo @Public()).
+// Sin esto, cualquier llamada autenticada por este cliente fallaba con 401 siempre —
+// nunca se adjuntaba el token (a diferencia de sync.ts, que sí lo hacía por fetch).
+axiosInstance.interceptors.request.use(async (config) => {
+  const token = await AsyncStorage.getItem('access_token');
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 // Interceptor para manejar errores globalmente

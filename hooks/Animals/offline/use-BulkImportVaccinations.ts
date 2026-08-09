@@ -1,5 +1,14 @@
 // hooks/Animals/offline/use-BulkImportVaccinations.ts
 // Carga masiva de vacunaciones desde Excel
+//
+// Columnas reales de la plantilla oficial (hoja Carga_Vacunas, ver
+// Plantilla_Carga_Masiva_Sanidad_Estancia360.xlsx → hoja Mapeo_Backend, que documenta
+// el mapeo esperado): ID_CARGA, FECHA, CODIGO_ANIMAL, LOTE_ACTUAL, VACUNA_1, DOSIS_1,
+// VACUNA_2, DOSIS_2, VACUNA_3, DOSIS_3, VACUNA_4, DOSIS_4, RESPONSABLE, NOTAS,
+// PRODUCTOS_CARGADOS, VALIDACION. Una fila = un animal, hasta 4 productos —
+// "Crear un registro por cada VACUNA_N no vacía. Cada producto conserva misma fecha,
+// animal, responsable y notas". ID_CARGA/LOTE_ACTUAL/PRODUCTOS_CARGADOS/VALIDACION son
+// de referencia/cosméticos en la plantilla, no se usan para la lógica de import.
 
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -40,13 +49,17 @@ function mapDate(raw: any): string | null {
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
+export interface VaccineProduct {
+    name: string;
+    dose: string | null;
+}
+
 export interface ValidatedVaccinationRow {
     rowIndex: number;
     animalCode: string;
     animal_id: string | null;
     eventDate: string;
-    vaccineName: string;
-    dose: string | null;
+    vaccines: VaccineProduct[];
     responsible: string | null;
     notes: string | null;
     errors: string[];
@@ -92,7 +105,10 @@ export function useBulkImportVaccinations() {
             setProgress(35);
 
             const workbook = xlsxRead(base64, { type: 'base64', cellDates: true });
-            const sheetName = workbook.SheetNames[0];
+            // La plantilla oficial trae varias hojas (Guia_Usuario, Carga_Vacunas, ...) —
+            // la de datos siempre se llama Carga_Vacunas; si no existe, cae a la primera
+            // hoja por compatibilidad con archivos recortados a mano.
+            const sheetName = workbook.SheetNames.includes('Carga_Vacunas') ? 'Carga_Vacunas' : workbook.SheetNames[0];
             const sheet = workbook.Sheets[sheetName];
             const jsonRows = xlsxUtils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][];
 
@@ -122,16 +138,24 @@ export function useBulkImportVaccinations() {
                 .filter(r => r.some((cell: any) => cell !== null && cell !== ''))
                 .map((r, i) => {
                     const errors: string[] = [];
-                    const animalCode = r[0] ? r[0].toString().trim().toUpperCase() : null;
+                    // FECHA, CODIGO_ANIMAL, LOTE_ACTUAL, VACUNA_1, DOSIS_1, ..., VACUNA_4, DOSIS_4, RESPONSABLE, NOTAS
                     const eventDate = mapDate(r[1]);
-                    const vaccineName = r[2] ? r[2].toString().trim() : null;
-                    const dose = r[3] ? r[3].toString().trim() : null;
-                    const responsible = r[4] ? r[4].toString().trim() : null;
-                    const notes = r[5] ? r[5].toString().trim() : null;
+                    const animalCode = r[2] ? r[2].toString().trim().toUpperCase() : null;
+                    const responsible = r[12] ? r[12].toString().trim() : null;
+                    const notes = r[13] ? r[13].toString().trim() : null;
+
+                    const vaccines: VaccineProduct[] = [];
+                    const productSlots: [number, number][] = [[4, 5], [6, 7], [8, 9], [10, 11]];
+                    for (const [nameIdx, doseIdx] of productSlots) {
+                        const name = r[nameIdx] ? r[nameIdx].toString().trim() : '';
+                        if (!name) continue;
+                        const dose = r[doseIdx] ? r[doseIdx].toString().trim() : null;
+                        vaccines.push({ name, dose });
+                    }
 
                     if (!animalCode) errors.push('Código de animal vacío');
                     if (!eventDate) errors.push('Fecha inválida');
-                    if (!vaccineName) errors.push('Nombre de vacuna vacío');
+                    if (vaccines.length === 0) errors.push('Ninguna vacuna cargada (VACUNA_1..4 vacías)');
 
                     const animal_id = animalCode ? (animalMap.get(animalCode) ?? null) : null;
                     if (animalCode && !animal_id) errors.push(`Animal "${animalCode}" no encontrado`);
@@ -141,8 +165,7 @@ export function useBulkImportVaccinations() {
                         animalCode: animalCode ?? `SIN_CODIGO_${i + 2}`,
                         animal_id,
                         eventDate: eventDate ?? new Date().toISOString().split('T')[0],
-                        vaccineName: vaccineName ?? '',
-                        dose,
+                        vaccines,
                         responsible,
                         notes,
                         errors,
@@ -168,6 +191,10 @@ export function useBulkImportVaccinations() {
     }, []);
 
     // ── 3. Cargar a SQLite ────────────────────────────────────────────────────
+    // Cada producto (VACUNA_N) de una fila se guarda como su propio animal_event +
+    // vaccination — mismo patrón que el resto del proyecto (1 vacunación = 1 evento) —
+    // pero todos comparten fecha/animal/responsable/notas de la fila, tal como documenta
+    // Mapeo_Backend de la plantilla.
 
     const loadToDatabase = useCallback(async () => {
         const validRows = rows.filter(r => !r.hasError);
@@ -195,29 +222,29 @@ export function useBulkImportVaccinations() {
                 const row = validRows[i];
                 try {
                     await db.withTransactionAsync(async () => {
-                        // Crear animal_event
-                        const eventId = newId();
-                        await db.runAsync(
-                            `INSERT INTO animal_events
-                             (id, id_user, id_ranch_animal, id_event_type, event_date, notes,
-                              created_at, updated_at, is_synced, sync_action)
-                             VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
-                            [eventId, session.id_user, row.animal_id!,
-                                EVENT_TYPES.VACUNACION,
-                                new Date(row.eventDate).toISOString(),
-                                row.notes ?? null, ts, ts]
-                        );
+                        for (const vaccine of row.vaccines) {
+                            const eventId = newId();
+                            await db.runAsync(
+                                `INSERT INTO animal_events
+                                 (id, id_user, id_ranch_animal, id_event_type, event_date, notes,
+                                  created_at, updated_at, is_synced, sync_action)
+                                 VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
+                                [eventId, session.id_user, row.animal_id!,
+                                    EVENT_TYPES.VACUNACION,
+                                    new Date(row.eventDate).toISOString(),
+                                    row.notes ?? null, ts, ts]
+                            );
 
-                        // Crear registro de vacunación
-                        const vaccId = newId();
-                        await db.runAsync(
-                            `INSERT INTO vaccinations
-                             (id, id_event, vaccine_name, dose, responsible, notes,
-                              created_at, updated_at, is_synced, sync_action)
-                             VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
-                            [vaccId, eventId, row.vaccineName, row.dose ?? null,
-                                row.responsible ?? null, row.notes ?? null, ts, ts]
-                        );
+                            const vaccId = newId();
+                            await db.runAsync(
+                                `INSERT INTO vaccinations
+                                 (id, id_event, vaccine_name, dose, responsible, notes,
+                                  created_at, updated_at, is_synced, sync_action)
+                                 VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
+                                [vaccId, eventId, vaccine.name, vaccine.dose ?? null,
+                                    row.responsible ?? null, row.notes ?? null, ts, ts]
+                            );
+                        }
                     });
                     loaded++;
                 } catch {

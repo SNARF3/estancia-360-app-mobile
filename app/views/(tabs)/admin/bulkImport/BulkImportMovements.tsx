@@ -8,20 +8,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 import {
-    useBulkImportGestation,
-    type ValidatedGestationRow,
-} from '../../../../../hooks/Animals/offline/use-BulkImportGestation';
+    LABEL_BY_TYPE,
+    useBulkImportMovements,
+    type BulkMovementGroup,
+} from '../../../../../hooks/Animals/offline/use-BulkImportMovements';
 
-const ACCENT = '#8B5CF6';
-
-const RESULT_LABELS: Record<string, string> = {
-    pregnant: 'Preñada',
-    empty: 'Vacía',
-};
-const RESULT_COLORS: Record<string, string> = {
-    pregnant: Colors.success,
-    empty: Colors.error,
-};
+const ACCENT = '#F59E0B';
 
 function ProgressBar({ pct }: { pct: number }) {
     const anim = useRef(new Animated.Value(0)).current;
@@ -45,7 +37,7 @@ function ReadingScreen({ progress }: { progress: number }) {
                 <Ionicons name="document-text" size={48} color={ACCENT} />
             </View>
             <Text style={s.readTitle}>Procesando archivo...</Text>
-            <Text style={s.readSub}>Buscando animales, servicios y validando datos</Text>
+            <Text style={s.readSub}>Leyendo las 5 hojas y validando animales, lotes, razas y clases</Text>
             <View style={s.progressWrap}><ProgressBar pct={progress} /><Text style={[s.progressPct, { color: ACCENT }]}>{progress}%</Text></View>
         </View>
     );
@@ -57,7 +49,7 @@ function LoadingScreen({ progress, loaded, skipped }: { progress: number; loaded
             <View style={[s.iconWrap, { backgroundColor: Colors.primary + '15' }]}>
                 <Ionicons name="cloud-upload" size={48} color={Colors.primary} />
             </View>
-            <Text style={s.readTitle}>Registrando diagnósticos...</Text>
+            <Text style={s.readTitle}>Registrando movimientos...</Text>
             <Text style={s.readSub}>Guardando en la base de datos local</Text>
             <View style={s.progressWrap}><ProgressBar pct={progress} /><Text style={[s.progressPct, { color: Colors.primary }]}>{progress}%</Text></View>
             <View style={s.countersRow}>
@@ -76,8 +68,8 @@ function DoneScreen({ loaded, skipped, onGoBack, onImportMore }: {
             <View style={[s.iconWrap, { backgroundColor: Colors.success + '15' }]}>
                 <Ionicons name="checkmark-circle" size={56} color={Colors.success} />
             </View>
-            <Text style={s.doneTitle}>¡Diagnósticos registrados!</Text>
-            <Text style={s.doneSub}>Los tactos de gestación fueron guardados correctamente.</Text>
+            <Text style={s.doneTitle}>¡Movimientos registrados!</Text>
+            <Text style={s.doneSub}>Las operaciones fueron guardadas localmente y se sincronizarán con el servidor.</Text>
             <View style={s.doneStats}>
                 <View style={[s.statBox, { borderColor: Colors.success }]}>
                     <Text style={[s.statNum, { color: Colors.success }]}>{loaded}</Text>
@@ -114,24 +106,43 @@ function ErrorScreen({ msg, onRetry }: { msg: string; onRetry: () => void }) {
     );
 }
 
-function PreviewRow({ item, onRemove }: { item: ValidatedGestationRow; onRemove: () => void }) {
+const TYPE_COLOR: Record<BulkMovementGroup['type'], string> = {
+    purchase: '#8B5CF6',
+    sale: Colors.success,
+    pasture_transfer: Colors.primary,
+    ranch_exit: '#F59E0B',
+    exit: Colors.error,
+};
+
+function groupSubtitle(g: BulkMovementGroup): string {
+    if (g.type === 'purchase') return g.counterpartOrOrigin ?? 'Sin proveedor';
+    if (g.type === 'sale') return g.counterpartOrOrigin ?? 'Sin comprador';
+    if (g.type === 'ranch_exit') return g.counterpartOrOrigin ?? 'Sin estancia destino';
+    if (g.type === 'pasture_transfer') return `→ ${g.destLotName ?? 'sin lote destino'}`;
+    return g.reason ?? 'Sin motivo';
+}
+
+function PreviewGroup({ item, onRemove }: { item: BulkMovementGroup; onRemove: () => void }) {
     const hasErr = item.hasError;
-    const resultLabel = RESULT_LABELS[item.result] ?? item.result;
-    const resultColor = RESULT_COLORS[item.result] ?? ACCENT;
+    const color = TYPE_COLOR[item.type];
     return (
         <View style={[s.previewRow, hasErr && s.previewRowError]}>
             <View style={s.previewLeft}>
                 <View style={s.previewCodeRow}>
-                    <Text style={[s.previewCode, hasErr && { color: Colors.error }]}>{item.animalCode}</Text>
-                    <Text style={[s.badge, { backgroundColor: resultColor + '20', color: resultColor }]}>{resultLabel}</Text>
+                    <Text style={[s.badge, { backgroundColor: color + '20', color }]}>{LABEL_BY_TYPE[item.type]}</Text>
+                    <Text style={[s.previewCode, hasErr && { color: Colors.error }]}>{groupSubtitle(item)}</Text>
                 </View>
                 <View style={s.previewMeta}>
                     <Ionicons name="calendar-outline" size={11} color={Colors.textDisabled} />
-                    <Text style={s.previewMetaTxt}>{item.eventDate}</Text>
-                    {item.gestationDays !== null && <><Text style={s.dot}>·</Text><Text style={s.previewMetaTxt}>{item.gestationDays} días de gestación</Text></>}
+                    <Text style={s.previewMetaTxt}>{item.fecha ?? '—'}</Text>
+                    <Text style={s.dot}>·</Text>
+                    <Ionicons name="paw-outline" size={11} color={Colors.textDisabled} />
+                    <Text style={s.previewMetaTxt}>
+                        {item.animals.length} animal{item.animals.length === 1 ? '' : 'es'}: {item.animals.slice(0, 4).map(a => a.code).join(', ')}
+                        {item.animals.length > 4 ? '…' : ''}
+                    </Text>
                 </View>
-                {item.notes && <Text style={s.noteTxt}>{item.notes}</Text>}
-                {hasErr && <View style={s.errorsWrap}>{item.errors.map((e, i) => <Text key={i} style={s.errorLine}>⚠ {e}</Text>)}</View>}
+                {hasErr && <View style={s.errorsWrap}>{item.errors.slice(0, 4).map((e, i) => <Text key={i} style={s.errorLine}>⚠ {e}</Text>)}</View>}
             </View>
             <TouchableOpacity onPress={onRemove} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="trash-outline" size={20} color={hasErr ? Colors.error : Colors.textDisabled} />
@@ -140,35 +151,35 @@ function PreviewRow({ item, onRemove }: { item: ValidatedGestationRow; onRemove:
     );
 }
 
-function PreviewScreen({ rows, validCount, invalidCount, onRemove, onLoad, onCancel }: {
-    rows: ValidatedGestationRow[]; validCount: number; invalidCount: number;
-    onRemove: (i: number) => void; onLoad: () => void; onCancel: () => void;
+function PreviewScreen({ groups, validCount, invalidCount, onRemove, onLoad, onCancel }: {
+    groups: BulkMovementGroup[]; validCount: number; invalidCount: number;
+    onRemove: (key: string) => void; onLoad: () => void; onCancel: () => void;
 }) {
     const insets = useSafeAreaInsets();
     const handleLoad = () => {
         if (validCount === 0) { Alert.alert('Sin datos válidos', 'Corregí el archivo e intentá de nuevo.'); return; }
         if (invalidCount > 0) {
-            Alert.alert('Filas con errores', `${invalidCount} fila(s) serán omitidas. ¿Cargar las ${validCount} válidas?`,
+            Alert.alert('Operaciones con errores', `${invalidCount} operación(es) serán omitidas. ¿Cargar las ${validCount} válidas?`,
                 [{ text: 'Cancelar', style: 'cancel' }, { text: 'Cargar igual', onPress: onLoad }]);
         } else onLoad();
     };
     return (
         <View style={{ flex: 1 }}>
             <View style={s.previewSummary}>
-                <View style={s.summaryChip}><Text style={[s.summaryNum, { color: Colors.success }]}>{validCount}</Text><Text style={s.summaryLbl}>Válidos</Text></View>
+                <View style={s.summaryChip}><Text style={[s.summaryNum, { color: Colors.success }]}>{validCount}</Text><Text style={s.summaryLbl}>Válidas</Text></View>
                 {invalidCount > 0 && <View style={s.summaryChip}><Text style={[s.summaryNum, { color: Colors.error }]}>{invalidCount}</Text><Text style={s.summaryLbl}>Con errores</Text></View>}
-                <View style={s.summaryChip}><Text style={[s.summaryNum, { color: Colors.primary }]}>{rows.length}</Text><Text style={s.summaryLbl}>Total</Text></View>
+                <View style={s.summaryChip}><Text style={[s.summaryNum, { color: Colors.primary }]}>{groups.length}</Text><Text style={s.summaryLbl}>Total</Text></View>
             </View>
             {invalidCount > 0 && (
                 <View style={s.warnBanner}>
                     <Ionicons name="warning-outline" size={16} color="#92400E" />
-                    <Text style={s.warnText}>Las filas en rojo serán omitidas. Toca 🗑 para eliminarlas.</Text>
+                    <Text style={s.warnText}>Las operaciones en rojo serán omitidas. Toca 🗑 para eliminarlas.</Text>
                 </View>
             )}
             <FlatList
-                data={rows}
-                keyExtractor={r => r.rowIndex.toString()}
-                renderItem={({ item }) => <PreviewRow item={item} onRemove={() => onRemove(item.rowIndex)} />}
+                data={groups}
+                keyExtractor={g => g.key}
+                renderItem={({ item }) => <PreviewGroup item={item} onRemove={() => onRemove(item.key)} />}
                 contentContainerStyle={s.previewList}
                 showsVerticalScrollIndicator={false}
                 ListFooterComponent={<View style={{ height: 120 }} />}
@@ -177,7 +188,7 @@ function PreviewScreen({ rows, validCount, invalidCount, onRemove, onLoad, onCan
                 <TouchableOpacity style={s.cancelBtn} onPress={onCancel}><Text style={s.cancelBtnTxt}>Cancelar</Text></TouchableOpacity>
                 <TouchableOpacity style={[s.loadBtn, validCount === 0 && s.loadBtnDisabled]} onPress={handleLoad} disabled={validCount === 0}>
                     <Ionicons name="cloud-upload-outline" size={20} color={Colors.white} />
-                    <Text style={s.loadBtnTxt}>CARGAR {validCount} DIAGNÓSTICOS</Text>
+                    <Text style={s.loadBtnTxt}>CARGAR {validCount} OPERACIONES</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -190,42 +201,38 @@ function IdleScreen({ onPick }: { onPick: () => void }) {
             <View style={s.uploadZone}>
                 <Ionicons name="cloud-upload-outline" size={52} color={Colors.primary} />
                 <Text style={s.uploadTitle}>Seleccionar archivo Excel</Text>
-                <Text style={s.uploadSub}>Formato .xlsx · Plantilla oficial Estancia360</Text>
+                <Text style={s.uploadSub}>Plantilla oficial: Plantilla_Carga_Masiva_Movimientos_Estancia360.xlsx</Text>
             </View>
             <TouchableOpacity style={s.primaryBtn} onPress={onPick}>
                 <Ionicons name="folder-open-outline" size={20} color={Colors.white} />
                 <Text style={s.primaryBtnTxt}>Elegir archivo</Text>
             </TouchableOpacity>
             <View style={s.columnsBox}>
-                <Text style={s.columnsTitle}>Columnas requeridas en la plantilla:</Text>
+                <Text style={s.columnsTitle}>Hojas reconocidas:</Text>
                 {[
-                    'CÓDIGO DEL ANIMAL',
-                    'FECHA DE TACTO (DD/MM/YYYY)',
-                    'TIPO DE SERVICIO (informativo)',
-                    'DIAGNÓSTICO (Preñada / Vacía)',
-                    'MESES DE GESTACIÓN (obligatorio si Preñada)',
-                    'PESO (Opcional, no se guarda en el diagnóstico)',
-                    'CONDICIÓN CORPORAL (Opcional, no se guarda en el diagnóstico)',
-                    'OBSERVACIONES (Opcional)',
+                    'Carga_Compras — animales nuevos (código, sexo, raza, categoría, lote)',
+                    'Carga_Ventas — animal existente + comprador (queda pendiente de confirmar)',
+                    'Carga_Traslados — animal existente + lote destino',
+                    'Carga_Salidas_Estancia — animal existente + estancia destino (irreversible)',
+                    'Carga_Bajas — animal existente + motivo (irreversible)',
                 ].map((c, i) => (
                     <View key={i} style={s.columnRow}>
                         <View style={s.columnDot} />
                         <Text style={s.columnTxt}>{c}</Text>
                     </View>
                 ))}
-                <Text style={s.columnsNote}>
-                    Requiere que el animal tenga un servicio reproductivo previo registrado — el
-                    diagnóstico se vincula automáticamente al último servicio activo.
+                <Text style={[s.columnTxt, { marginTop: 8, fontStyle: 'italic' }]}>
+                    ID_CARGA agrupa filas de una misma operación (comprador/precio/fecha compartidos) en Compras, Ventas, Traslados y Salidas.
                 </Text>
             </View>
         </View>
     );
 }
 
-export default function BulkImportGestation() {
+export default function BulkImportMovements() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const { step, progress, rows, errorMsg, loadedCount, skippedCount, validCount, invalidCount, pickAndParse, removeRow, loadToDatabase, reset } = useBulkImportGestation();
+    const { step, progress, groups, errorMsg, loadedCount, skippedCount, validCount, invalidCount, pickAndParse, removeGroup, loadToDatabase, reset } = useBulkImportMovements();
 
     const goBack = () => {
         reset();
@@ -244,14 +251,14 @@ export default function BulkImportGestation() {
                     </TouchableOpacity>
                     <View style={s.titleWrap}>
                         <Text style={s.headerTitle}>Carga Masiva</Text>
-                        <Text style={s.headerSub}>Diagnóstico de Gestación / Tactos</Text>
+                        <Text style={s.headerSub}>Movimientos</Text>
                     </View>
                     {STEPS[step] && <View style={s.stepIndicator}><Text style={s.stepText}>{STEPS[step]}</Text></View>}
                 </View>
             )}
             {step === 'idle' && <IdleScreen onPick={pickAndParse} />}
             {step === 'reading' && <ReadingScreen progress={progress} />}
-            {step === 'preview' && <PreviewScreen rows={rows} validCount={validCount} invalidCount={invalidCount} onRemove={removeRow} onLoad={loadToDatabase} onCancel={reset} />}
+            {step === 'preview' && <PreviewScreen groups={groups} validCount={validCount} invalidCount={invalidCount} onRemove={removeGroup} onLoad={loadToDatabase} onCancel={reset} />}
             {step === 'loading' && <LoadingScreen progress={progress} loaded={loadedCount} skipped={skippedCount} />}
             {step === 'done' && <DoneScreen loaded={loadedCount} skipped={skippedCount} onGoBack={goBack} onImportMore={reset} />}
             {step === 'error' && <ErrorScreen msg={errorMsg ?? 'Error desconocido'} onRetry={reset} />}
@@ -297,13 +304,12 @@ const s = StyleSheet.create({
 
     uploadZone: { width: '100%', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.primary + '40', borderStyle: 'dashed', borderRadius: BorderRadius.xl, paddingVertical: Spacing.xl * 1.5, marginBottom: Spacing.xl, backgroundColor: Colors.primary + '05' },
     uploadTitle: { fontSize: 18, fontWeight: '800', color: Colors.primary, marginTop: 12 },
-    uploadSub: { fontSize: 12, color: Colors.textSecondary, marginTop: 4 },
+    uploadSub: { fontSize: 12, color: Colors.textSecondary, marginTop: 4, textAlign: 'center' },
     columnsBox: { width: '100%', marginTop: Spacing.xl, backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: Spacing.lg, ...Shadows.card },
     columnsTitle: { fontSize: 13, fontWeight: '700', color: Colors.textPrimary, marginBottom: 10 },
-    columnRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 3 },
-    columnDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: ACCENT },
-    columnTxt: { fontSize: 12, color: Colors.textSecondary },
-    columnsNote: { fontSize: 11, color: Colors.textDisabled, marginTop: 10, lineHeight: 16, fontStyle: 'italic' },
+    columnRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 3 },
+    columnDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: ACCENT, marginTop: 6 },
+    columnTxt: { fontSize: 12, color: Colors.textSecondary, flex: 1 },
 
     previewSummary: { flexDirection: 'row', gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.white, ...Shadows.card },
     summaryChip: { flex: 1, alignItems: 'center', paddingVertical: 8, backgroundColor: Colors.background, borderRadius: BorderRadius.md },
@@ -315,13 +321,12 @@ const s = StyleSheet.create({
     previewRow: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: Spacing.md, marginBottom: Spacing.sm, ...Shadows.card, borderLeftWidth: 4, borderLeftColor: Colors.success },
     previewRowError: { borderLeftColor: Colors.error },
     previewLeft: { flex: 1 },
-    previewCodeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-    previewCode: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary },
+    previewCodeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' },
+    previewCode: { fontSize: 14, fontWeight: '800', color: Colors.textPrimary },
     badge: { fontSize: 11, fontWeight: '700', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
     previewMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
     previewMetaTxt: { fontSize: 11, color: Colors.textDisabled },
     dot: { fontSize: 11, color: Colors.textDisabled },
-    noteTxt: { fontSize: 11, color: Colors.textSecondary, marginTop: 4, fontStyle: 'italic' },
     errorsWrap: { marginTop: 6 },
     errorLine: { fontSize: 11, color: Colors.error, lineHeight: 18 },
     previewFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.white, ...Shadows.card },

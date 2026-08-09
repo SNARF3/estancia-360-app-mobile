@@ -37,9 +37,31 @@ const OPTIONS: ImportOption[] = [
         columns: ['CÓDIGO ANIMAL', 'FECHA (DD/MM/YYYY)', 'NOMBRE VACUNA', 'DOSIS (Opcional)', 'RESPONSABLE (Opcional)', 'OBSERVACIONES (Opcional)'],
     },
     {
-        title: 'Gestaciones', subtitle: 'Importar diagnósticos de gestación',
+        title: 'Diagnóstico de Gestación / Tactos', subtitle: 'Resultados de tacto de preñez',
         icon: 'analytics-outline', color: '#8B5CF6',
-        route: null, available: false, columns: [],
+        route: '/views/(tabs)/admin/bulkImport/BulkImportGestation', available: true,
+        columns: ['CÓDIGO DEL ANIMAL', 'FECHA DE TACTO (DD/MM/YYYY)', 'TIPO DE SERVICIO (informativo)',
+            'DIAGNÓSTICO (Preñada/Vacía)', 'MESES DE GESTACIÓN (si Preñada)', 'OBSERVACIONES (Opcional)'],
+    },
+    {
+        title: 'Tratamientos', subtitle: 'Historial de medicamentos aplicados',
+        icon: 'medkit-outline', color: '#F97316',
+        route: '/views/(tabs)/admin/bulkImport/BulkImportTreatments', available: true,
+        columns: ['CODIGO_ANIMAL', 'FECHA', 'ENFERMEDAD_DIAGNOSTICO', 'MEDICAMENTO', 'DOSIS',
+            'DURACION_DIAS', 'DIAS_RETIRO', 'RESPONSABLE', 'NOTAS'],
+    },
+    {
+        title: 'Incidentes Sanitarios', subtitle: 'Enfermedades detectadas y cuarentenas',
+        icon: 'warning-outline', color: '#EF4444',
+        route: '/views/(tabs)/admin/bulkImport/BulkImportIncidents', available: true,
+        columns: ['CODIGO_ANIMAL', 'FECHA', 'TIPO_INCIDENTE (illness_detected/quarantine)',
+            'DESCRIPCION', 'FECHA_RESUELTO (Opcional)', 'RESPONSABLE', 'NOTAS'],
+    },
+    {
+        title: 'Movimientos', subtitle: 'Compras, ventas, traslados y bajas',
+        icon: 'swap-horizontal-outline', color: Colors.primary,
+        route: '/views/(tabs)/admin/bulkImport/BulkImportMovements', available: true,
+        columns: ['Plantilla con 5 hojas: Carga_Compras, Carga_Ventas, Carga_Traslados, Carga_Salidas_Estancia, Carga_Bajas'],
     },
 ];
 

@@ -21,6 +21,8 @@ export default function RanchLayout() {
             <Stack.Screen name="movements/SaleForm" />
             <Stack.Screen name="movements/PurchaseForm" />
             <Stack.Screen name="movements/AnimalExitForm" />
+            <Stack.Screen name="movements/RanchExitForm" />
+            <Stack.Screen name="movements/PendingSalesScreen" />
         </Stack>
     );
 }

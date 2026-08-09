@@ -7,7 +7,7 @@
  *   Ambas operaciones van dentro de withTransactionAsync para atomicidad.
  */
 
-import { EVENT_TYPES, PRODUCTIVE_STATUSES } from '../database';
+import { ANIMAL_STATUSES, EVENT_TYPES, PRODUCTIVE_STATUSES } from '../database';
 import { getDb } from '../db-pool';
 import { calcWithdrawalEnd, newId, now } from '../db-utils';
 import {
@@ -423,9 +423,9 @@ export async function registerFatteningEntry(input: CreateFatteningEntryInput) {
         const ts = now();
         await db.runAsync(
             `INSERT INTO fattening_entries
-         (id, id_event, system_type, initial_weight, notes, created_at, updated_at, is_synced, sync_action)
-       VALUES (?,?,?,?,?,?,?,0,'INSERT')`,
-            [id, event.id, input.system_type, input.initial_weight ?? null, input.notes ?? null, ts, ts]
+         (id, id_event, id_lot_dest, system_type, initial_weight, notes, created_at, updated_at, is_synced, sync_action)
+       VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
+            [id, event.id, input.id_lot_dest, input.system_type, input.initial_weight ?? null, input.notes ?? null, ts, ts]
         );
 
         await updateAnimalProductiveStatus(input.id_ranch_animal, PRODUCTIVE_STATUSES.ENGORDE, input.id_lot_dest);
@@ -468,54 +468,290 @@ export async function registerFeedRecord(input: CreateFeedRecordInput) {
     return { feed_id: id };
 }
 
-// ─── MÓDULO MOVIMIENTOS — Venta ───────────────────────────────────────────────
+// ─── MÓDULO MOVIMIENTOS — batch-first (movements + movement_animals) ─────────
+// Matchea el modelo real del backend: un movement agrupa N movement_animals con
+// cabecera compartida. sale queda 'pending' hasta confirmar/rechazar cada animal
+// (ver confirmMovementAnimal); purchase/pasture_transfer/ranch_exit van directo
+// a 'confirmed'. Reemplaza los viejos registerSale/registerPurchase/registerTransfer
+// (uno por animal, sin agrupación) — ver migrations.ts v1 para el reemplazo de schema.
 
-export interface CreateSaleInput {
-    id_user: string;
-    id_ranch_animal: string;
-    event_date: string;
-    buyer?: string;
-    destination?: string;
-    sale_price?: number;
-    price_per_kg?: number;
+export interface MovementAnimalInput {
+    id_ranch_animal?: string;   // requerido excepto en purchase
+    id_lot_dest?: string;       // requerido en pasture_transfer
     notes?: string;
+    newAnimal?: {                // requerido únicamente en purchase
+        code: string;
+        sex: 'M' | 'F';
+        id_breed: number;
+        id_animal_class: number;
+        birthdate: string;
+        weight?: number;
+        id_lot?: string;
+        id_productive_status?: number;
+    };
 }
 
-export async function registerSale(input: CreateSaleInput) {
-    const underWithdrawal = await hasActiveWithdrawal(input.id_ranch_animal);
-    if (underWithdrawal) throw new Error('RN-18: Animal con período de retiro sanitario activo.');
+export interface CreateMovementInput {
+    id_user: string;
+    id_ranch: string;
+    movement_type: 'sale' | 'purchase' | 'pasture_transfer' | 'ranch_exit';
+    event_date: string;
+    counterpart_name?: string;
+    origin_name?: string;
+    total_price?: number;
+    price_per_kg?: number;
+    notes?: string;
+    animals: MovementAnimalInput[];
+}
+
+export async function registerMovement(input: CreateMovementInput) {
+    if (input.animals.length === 0) throw new Error('Un movimiento necesita al menos un animal.');
+
+    if (input.movement_type === 'sale') {
+        for (const a of input.animals) {
+            if (a.id_ranch_animal && (await hasActiveWithdrawal(a.id_ranch_animal))) {
+                throw new Error('RN-18: uno o más animales tienen un período de retiro sanitario activo.');
+            }
+        }
+    }
 
     const db = await getDb();
-
-    let event_id = '';
-    let sale_id = '';
+    const ts = now();
+    const movementId = newId();
+    const status: 'pending' | 'confirmed' = input.movement_type === 'sale' ? 'pending' : 'confirmed';
+    const movementAnimalIds: string[] = [];
 
     await db.withTransactionAsync(async () => {
-        const event = await createEvent({
-            id_user: input.id_user,
-            id_ranch_animal: input.id_ranch_animal,
-            id_event_type: EVENT_TYPES.VENTA,
-            event_date: input.event_date,
-            notes: input.notes,
-        });
-
-        const id = newId();
-        const ts = now();
         await db.runAsync(
-            `INSERT INTO animal_sales
-         (id, id_event, buyer, destination, sale_price, price_per_kg, created_at, updated_at, is_synced, sync_action)
-       VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
-            [id, event.id, input.buyer ?? null, input.destination ?? null,
-                input.sale_price ?? null, input.price_per_kg ?? null, ts, ts]
+            `INSERT INTO movements
+         (id, id_ranch, movement_type, status, movement_date, counterpart_name, origin_name, total_price, price_per_kg, notes, created_at, updated_at, is_synced, sync_action)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+            [movementId, input.id_ranch, input.movement_type, status, input.event_date,
+                input.counterpart_name ?? null, input.origin_name ?? null,
+                input.total_price ?? null, input.price_per_kg ?? null, input.notes ?? null, ts, ts]
         );
 
-        await dischargeAnimal(input.id_ranch_animal);
+        for (const animalDto of input.animals) {
+            const maId = newId();
 
-        event_id = event.id;
-        sale_id = id;
+            if (input.movement_type === 'purchase') {
+                const data = animalDto.newAnimal!;
+                const animal = await createAnimal({
+                    id_ranch: input.id_ranch,
+                    id_breed: data.id_breed,
+                    id_animal_class: data.id_animal_class,
+                    id_productive_status: data.id_productive_status ?? PRODUCTIVE_STATUSES.CRIA,
+                    id_lot: data.id_lot,
+                    code: data.code,
+                    birthdate: data.birthdate,
+                    weight: data.weight,
+                    sex: data.sex,
+                    origin: 'purchased',
+                });
+
+                const event = await createEvent({
+                    id_user: input.id_user,
+                    id_ranch_animal: animal.id,
+                    id_event_type: EVENT_TYPES.COMPRA,
+                    event_date: input.event_date,
+                    notes: animalDto.notes,
+                });
+
+                await db.runAsync(
+                    `INSERT INTO movement_animals
+             (id, id_movement, id_ranch_animal, id_lot_dest, status, id_event, notes,
+              new_code, new_sex, new_id_breed, new_id_animal_class, new_birthdate, new_weight, new_id_lot, new_id_productive_status,
+              created_at, updated_at, is_synced, sync_action)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+                    [maId, movementId, animal.id, data.id_lot ?? null, 'confirmed', event.id, animalDto.notes ?? null,
+                        data.code, data.sex, data.id_breed, data.id_animal_class, data.birthdate,
+                        data.weight ?? null, data.id_lot ?? null, data.id_productive_status ?? null, ts, ts]
+                );
+            } else if (input.movement_type === 'sale') {
+                const animalId = animalDto.id_ranch_animal!;
+                const animal = await db.getFirstAsync<{ id_status: number; id_lot: string | null }>(
+                    `SELECT id_status, id_lot FROM ranch_animals WHERE id = ?`, [animalId]
+                );
+
+                await db.runAsync(
+                    `INSERT INTO movement_animals
+             (id, id_movement, id_ranch_animal, id_lot_origin, prev_id_status, status, notes, created_at, updated_at, is_synced, sync_action)
+           VALUES (?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+                    [maId, movementId, animalId, animal?.id_lot ?? null, animal?.id_status ?? null,
+                        'pending', animalDto.notes ?? null, ts, ts]
+                );
+
+                await db.runAsync(
+                    `UPDATE ranch_animals SET id_status = ?, updated_at = ?,
+             is_synced = 0, sync_action = CASE WHEN sync_action='INSERT' THEN 'INSERT' ELSE 'UPDATE' END
+           WHERE id = ?`,
+                    [ANIMAL_STATUSES.PENDIENTE_MOVIMIENTO, ts, animalId]
+                );
+            } else if (input.movement_type === 'pasture_transfer') {
+                const animalId = animalDto.id_ranch_animal!;
+                const animal = await db.getFirstAsync<{ id_status: number; id_lot: string | null }>(
+                    `SELECT id_status, id_lot FROM ranch_animals WHERE id = ?`, [animalId]
+                );
+
+                const event = await createEvent({
+                    id_user: input.id_user,
+                    id_ranch_animal: animalId,
+                    id_event_type: EVENT_TYPES.TRANSFERENCIA,
+                    event_date: input.event_date,
+                    notes: animalDto.notes,
+                });
+
+                await db.runAsync(
+                    `INSERT INTO movement_animals
+             (id, id_movement, id_ranch_animal, id_lot_origin, id_lot_dest, prev_id_status, status, id_event, notes, created_at, updated_at, is_synced, sync_action)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+                    [maId, movementId, animalId, animal?.id_lot ?? null, animalDto.id_lot_dest ?? null,
+                        animal?.id_status ?? null, 'confirmed', event.id, animalDto.notes ?? null, ts, ts]
+                );
+
+                await db.runAsync(`UPDATE ranch_animals SET id_lot = ?, updated_at = ? WHERE id = ?`, [animalDto.id_lot_dest ?? null, ts, animalId]);
+            } else if (input.movement_type === 'ranch_exit') {
+                const animalId = animalDto.id_ranch_animal!;
+                const animal = await db.getFirstAsync<{ id_status: number; id_lot: string | null }>(
+                    `SELECT id_status, id_lot FROM ranch_animals WHERE id = ?`, [animalId]
+                );
+
+                const event = await createEvent({
+                    id_user: input.id_user,
+                    id_ranch_animal: animalId,
+                    id_event_type: EVENT_TYPES.SALIDA,
+                    event_date: input.event_date,
+                    notes: animalDto.notes,
+                });
+
+                await db.runAsync(
+                    `INSERT INTO movement_animals
+             (id, id_movement, id_ranch_animal, id_lot_origin, prev_id_status, status, id_event, notes, created_at, updated_at, is_synced, sync_action)
+           VALUES (?,?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+                    [maId, movementId, animalId, animal?.id_lot ?? null, animal?.id_status ?? null,
+                        'confirmed', event.id, animalDto.notes ?? null, ts, ts]
+                );
+
+                await db.runAsync(
+                    `UPDATE ranch_animals SET id_status = ?, id_productive_status = ?, updated_at = ?,
+             is_synced = 0, sync_action = CASE WHEN sync_action='INSERT' THEN 'INSERT' ELSE 'UPDATE' END
+           WHERE id = ?`,
+                    [ANIMAL_STATUSES.VENDIDO, PRODUCTIVE_STATUSES.BAJA, ts, animalId]
+                );
+            }
+
+            movementAnimalIds.push(maId);
+        }
     });
 
-    return { event_id, sale_id };
+    return { movement_id: movementId, movement_animal_ids: movementAnimalIds };
+}
+
+/**
+ * Confirma o rechaza UN animal de una venta pendiente.
+ * accepted → vendido+baja (irreversible). rejected → revierte a prev_id_status.
+ */
+export async function confirmMovementAnimal(idMovementAnimal: string, id_user: string, status: 'accepted' | 'rejected', notes?: string) {
+    const db = await getDb();
+    const ts = now();
+
+    const ma = await db.getFirstAsync<{ id_ranch_animal: string; prev_id_status: number | null; id_movement: string }>(
+        `SELECT id_ranch_animal, prev_id_status, id_movement FROM movement_animals WHERE id = ?`, [idMovementAnimal]
+    );
+    if (!ma) throw new Error(`movement_animal ID=${idMovementAnimal} no encontrado.`);
+
+    await db.withTransactionAsync(async () => {
+        await db.runAsync(
+            `UPDATE movement_animals SET status = ?, notes = COALESCE(?, notes), updated_at = ?,
+       is_synced = 0, sync_action = CASE WHEN sync_action='INSERT' THEN 'INSERT' ELSE 'UPDATE' END
+       WHERE id = ?`,
+            [status, notes ?? null, ts, idMovementAnimal]
+        );
+
+        if (status === 'accepted') {
+            await db.runAsync(
+                `UPDATE ranch_animals SET id_status = ?, id_productive_status = ?, updated_at = ?,
+         is_synced = 0, sync_action = CASE WHEN sync_action='INSERT' THEN 'INSERT' ELSE 'UPDATE' END
+         WHERE id = ?`,
+                [ANIMAL_STATUSES.VENDIDO, PRODUCTIVE_STATUSES.BAJA, ts, ma.id_ranch_animal]
+            );
+
+            const event = await createEvent({
+                id_user,
+                id_ranch_animal: ma.id_ranch_animal,
+                id_event_type: EVENT_TYPES.VENTA,
+                event_date: ts,
+            });
+            await db.runAsync(`UPDATE movement_animals SET id_event = ? WHERE id = ?`, [event.id, idMovementAnimal]);
+        } else {
+            await db.runAsync(
+                `UPDATE ranch_animals SET id_status = ?, updated_at = ?,
+         is_synced = 0, sync_action = CASE WHEN sync_action='INSERT' THEN 'INSERT' ELSE 'UPDATE' END
+         WHERE id = ?`,
+                [ma.prev_id_status ?? ANIMAL_STATUSES.ACTIVO, ts, ma.id_ranch_animal]
+            );
+        }
+    });
+}
+
+/**
+ * Cancela un movimiento pendiente (venta) completo — equivalente local a
+ * PATCH /movements/:id/cancel. Solo aplica a movements en status='pending' (hoy
+ * únicamente 'sale' puede quedar pending; el resto de los tipos van directo a
+ * 'confirmed' en registerMovement). Animales todavía 'pending' revierten a
+ * prev_id_status; animales ya 'accepted' NO se tocan (RN-07, venta irreversible),
+ * igual que CancelMovementUseCase en el backend.
+ */
+export async function cancelMovement(idMovement: string) {
+    const db = await getDb();
+    const ts = now();
+
+    const movement = await db.getFirstAsync<{ status: string; sync_action: string; server_id: string | null }>(
+        `SELECT status, sync_action, server_id FROM movements WHERE id = ?`, [idMovement]
+    );
+    if (!movement) throw new Error(`Movimiento ID=${idMovement} no encontrado.`);
+    if (movement.status === 'cancelled') return; // idempotente
+    if (movement.status === 'confirmed') throw new Error('Este movimiento ya fue confirmado — no se puede cancelar (RN-07).');
+
+    const animals = await db.getAllAsync<{ id: string; id_ranch_animal: string; status: string; prev_id_status: number | null }>(
+        `SELECT id, id_ranch_animal, status, prev_id_status FROM movement_animals WHERE id_movement = ?`, [idMovement]
+    );
+
+    // Si el movement nunca llegó a sincronizarse, el servidor nunca lo vio — no hay
+    // nada que reconciliar ahí. Se archiva localmente como sincronizado (nada que
+    // mandar) en vez de dejarlo pendiente, que produciría un `create` de una venta
+    // ya cancelada (buildMovementsBatch no manda `status`, así que el servidor la
+    // registraría como pending de nuevo, ignorando la cancelación local).
+    const neverSynced = movement.sync_action === 'INSERT' && !movement.server_id;
+
+    await db.withTransactionAsync(async () => {
+        for (const a of animals) {
+            if (a.status === 'pending') {
+                await db.runAsync(
+                    `UPDATE ranch_animals SET id_status = ?, updated_at = ?,
+             is_synced = 0, sync_action = CASE WHEN sync_action='INSERT' THEN 'INSERT' ELSE 'UPDATE' END
+           WHERE id = ?`,
+                    [a.prev_id_status ?? ANIMAL_STATUSES.ACTIVO, ts, a.id_ranch_animal]
+                );
+            }
+        }
+
+        if (neverSynced) {
+            await db.runAsync(
+                `UPDATE movements SET status = 'cancelled', updated_at = ?, is_synced = 1, synced_at = ? WHERE id = ?`,
+                [ts, ts, idMovement]
+            );
+            await db.runAsync(
+                `UPDATE movement_animals SET is_synced = 1, synced_at = ? WHERE id_movement = ?`,
+                [ts, idMovement]
+            );
+        } else {
+            await db.runAsync(
+                `UPDATE movements SET status = 'cancelled', updated_at = ?, is_synced = 0, sync_action = 'UPDATE' WHERE id = ?`,
+                [ts, idMovement]
+            );
+        }
+    });
 }
 
 // ─── MÓDULO MOVIMIENTOS — Salida (muerte/descarte) ────────────────────────────
@@ -559,97 +795,6 @@ export async function registerExit(input: CreateExitInput) {
     });
 
     return { event_id, exit_id };
-}
-
-// ─── MÓDULO MOVIMIENTOS — Compra ─────────────────────────────────────────────
-
-export interface CreatePurchaseInput {
-    id_user: string;
-    id_ranch_animal: string;
-    supplier?: string;
-    origin?: string;
-    purchase_price?: number;
-    price_per_kg?: number;
-    event_date: string;
-    notes?: string;
-}
-
-export async function registerPurchase(input: CreatePurchaseInput) {
-    const db = await getDb();
-    let event_id = '';
-    let purchase_id = '';
-
-    await db.withTransactionAsync(async () => {
-        const event = await createEvent({
-            id_user: input.id_user,
-            id_ranch_animal: input.id_ranch_animal,
-            id_event_type: EVENT_TYPES.COMPRA,
-            event_date: input.event_date,
-            notes: input.notes,
-        });
-
-        const id = newId();
-        const ts = now();
-        await db.runAsync(
-            `INSERT INTO animal_purchases
-             (id, id_event, supplier, origin, purchase_price, price_per_kg, created_at, updated_at, is_synced, sync_action)
-             VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
-            [id, event.id, input.supplier ?? null, input.origin ?? null,
-                input.purchase_price ?? null, input.price_per_kg ?? null, ts, ts]
-        );
-
-        event_id = event.id;
-        purchase_id = id;
-    });
-
-    return { event_id, purchase_id };
-}
-
-// ─── MÓDULO MOVIMIENTOS — Traslado ────────────────────────────────────────────
-
-export interface CreateTransferInput {
-    id_user: string;
-    id_ranch_animal: string;
-    id_lot_origin: string;
-    id_lot_dest: string;
-    reason?: 'management' | 'breeding' | 'rearing' | 'fattening' | 'health';
-    event_date: string;
-    notes?: string;
-}
-
-export async function registerTransfer(input: CreateTransferInput) {
-    const db = await getDb();
-    let event_id = '';
-    let transfer_id = '';
-
-    await db.withTransactionAsync(async () => {
-        const event = await createEvent({
-            id_user: input.id_user,
-            id_ranch_animal: input.id_ranch_animal,
-            id_event_type: EVENT_TYPES.TRANSFERENCIA,
-            event_date: input.event_date,
-            notes: input.notes,
-        });
-
-        const id = newId();
-        const ts = now();
-        await db.runAsync(
-            `INSERT INTO animal_transfers
-             (id, id_event, id_lot_origin, id_lot_dest, reason, created_at, updated_at, is_synced, sync_action)
-             VALUES (?,?,?,?,?,?,?,0,'INSERT')`,
-            [id, event.id, input.id_lot_origin, input.id_lot_dest, input.reason ?? null, ts, ts]
-        );
-
-        await db.runAsync(
-            `UPDATE ranch_animals SET id_lot = ?, updated_at = ? WHERE id = ?`,
-            [input.id_lot_dest, ts, input.id_ranch_animal]
-        );
-
-        event_id = event.id;
-        transfer_id = id;
-    });
-
-    return { event_id, transfer_id };
 }
 
 // ─── MÓDULO SANIDAD — Tratamiento ─────────────────────────────────────────────

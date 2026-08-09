@@ -24,10 +24,11 @@ import { constants } from '../../../constants/constants';
 import { Colors, Spacing, Typography } from '../../../constants/theme';
 
 // HOOKS
-import { saveSession } from '../../../hooks/auth/use-Auth';
+import { saveCredentials, saveSession } from '../../../hooks/auth/use-Auth';
 import { useRegisterRanch } from '../../../hooks/auth/use-RegisterRanch';
 import { useUserRegisterLogic } from '../../../hooks/auth/use-UserRegisterLogic';
 import { LocationItem, useLocationData } from '../../../hooks/constants/use-LotationData';
+import { postRequest } from '../../../hooks/db.postre-connection/db.connection';
 
 // --- Select Component Reutilizable ---
 const CustomSelect = ({ label, value, options, onSelect, disabled = false, placeholder = "Seleccionar" }: any) => {
@@ -206,16 +207,23 @@ export default function RegisterRanchScreen() {
             if (ranchRegisterResponse && ranchRegisterResponse.ranch) {
                 console.log('✅ Estancia creada exitosamente.');
 
-                // Segun tu requerimiento, guardamos la sesión usando los datos directamente de las respuestas
-                // NOTA: Si el backend no devuelve un accessToken en el registro, 
-                // se debería invocar el login o usar un token temporal.
-                // Por ahora, asumimos que el flujo guardará lo que tenga disponible.
+                // Ni /auth/register ni /ranches devuelven un accessToken (el registro no
+                // loguea al usuario). Sin este login explícito, saveSession() se llamaba con
+                // accessToken='' — el dispositivo quedaba con un Bearer vacío guardado justo
+                // antes de aterrizar en Management, que dispara GETs autenticados de inmediato
+                // (401 en cascada, mismo bug que ya se corrigió en el login normal).
+                console.log('[Paso 3] Autenticando para obtener accessToken...');
+                const loginResponse = await postRequest<{ accessToken: string }>('auth/login', {
+                    email: rawUserData.email,
+                    password: rawUserData.password,
+                });
+                await saveCredentials(rawUserData.email, rawUserData.password);
 
                 const user = userRegisterResponse.user;
                 const ranch = ranchRegisterResponse.ranch;
 
                 await saveSession({
-                    accessToken: '',
+                    accessToken: loginResponse.accessToken,
                     idUser: user.id,
                     idRole: user.idRole,
                     email: user.email,
@@ -223,7 +231,11 @@ export default function RegisterRanchScreen() {
                     id_ranch: ranch.id,
                     ranch_name: ranch.name,
                     production_types: ranch.productionTypes.map(pt => pt.productionType.id),
-                    ranch_role: user.idRole,
+                    // Quien completa ESTE flujo (crear una estancia nueva) es siempre su OWNER
+                    // (RanchRolesEnum.OWNER=1) — user.idRole es el rol de SISTEMA (casi siempre
+                    // 3=Usuario), no el rol dentro de la estancia. Usarlo acá guardaba "Administrador"
+                    // en el perfil de cualquier ganadero recién registrado (ver ROLE_LABELS en usuario.tsx).
+                    ranch_role: 1,
                 });
 
                 showMessage({ message: '¡Registro Exitoso!', description: 'Bienvenido a Estancia 360', type: 'success' });

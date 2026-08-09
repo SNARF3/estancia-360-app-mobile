@@ -14,7 +14,6 @@ export interface RegisterFormData {
 }
 
 interface RegisterRequestData {
-  idRole: number;
   ci: string;
   fullname: string;
   paternalSurname: string;
@@ -226,8 +225,9 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
   };
 
   const prepareRegisterData = (): RegisterRequestData => {
+    // idRole NO va en el body — el backend fuerza USER(3) para todo auto-registro
+    // (RegisterDto ya no acepta ese campo; mandarlo rompe la request con 400).
     return {
-      idRole: idRole,
       ci: formData.ci,
       fullname: formData.nombre,
       paternalSurname: formData.apellidoPaterno,
@@ -270,7 +270,7 @@ export const useUserRegisterLogic = (idRole: number = 2) => {
       console.log('📤 Enviando datos de registro:', registerData);
 
       const response = await postRequest<BackendRegisterResponse>(
-        'estancia-360/auth/register',
+        'auth/register',
         registerData
       );
 

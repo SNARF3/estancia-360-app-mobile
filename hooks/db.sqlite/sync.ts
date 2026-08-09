@@ -7,8 +7,8 @@
  *   - Si no hay internet, el fetch falla y se informa al usuario. Sin checks de NetInfo.
  *
  * Endpoints batch:
- *   POST {API_BASE}/estancia-360/sync/cria   — pastures, lots, animals, histories, cría
- *   POST {API_BASE}/estancia-360/sync/recria — weight records, rearing selections
+ *   POST {API_BASE}/sync/cria   — pastures, lots, animals, histories, cría
+ *   POST {API_BASE}/sync/recria — weight records, rearing selections
  *
  * Formato de ítem: { localId, operation, serverId?, data, happenedAt? }
  * FKs no resueltas: data.localRef_{field} = localId referenciado
@@ -19,10 +19,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDb } from './db-pool';
 import { newId, now } from './db-utils';
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.estancia360.com';
+import { API_BASE_URL } from '../config/api';
+import { getCredentials } from '../auth/use-Auth';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -95,7 +93,7 @@ const RECRIA_CONFIG: SyncTableConfig[] = [
 
 const ENGORDE_CONFIG: SyncTableConfig[] = [
     // Ingresos manuales a Engorde (sistema, peso inicial)
-    { key: 'fatteningEntries', table: 'fattening_entries', fkFields: ['id_event'] },
+    { key: 'fatteningEntries', table: 'fattening_entries', fkFields: ['id_event', 'id_lot_dest'] },
     {
         key: 'weightRecords',
         table: 'weight_records',
@@ -120,61 +118,41 @@ const SANIDAD_QUERIES: Record<string, string> = {
     vaccinations: `
         SELECT v.id, v.server_id, v.sync_action, v.is_synced, v.created_at, v.updated_at,
                v.vaccine_name, v.dose, v.responsible, v.notes,
-               ae.id_ranch_animal, ae.created_at AS event_date
+               ae.id_ranch_animal, ae.event_date
         FROM vaccinations v JOIN animal_events ae ON ae.id = v.id_event
         WHERE v.is_synced = 0`,
     treatments: `
         SELECT t.id, t.server_id, t.sync_action, t.is_synced, t.created_at, t.updated_at,
                t.illness, t.medication, t.dose, t.duration_days, t.withdrawal_days,
                t.responsible, t.notes,
-               ae.id_ranch_animal, ae.created_at AS event_date
+               ae.id_ranch_animal, ae.event_date
         FROM treatments t JOIN animal_events ae ON ae.id = t.id_event
         WHERE t.is_synced = 0`,
     health_incidents: `
         SELECT hi.id, hi.server_id, hi.sync_action, hi.is_synced, hi.created_at, hi.updated_at,
                hi.incident_type, hi.description, hi.notes,
-               ae.id_ranch_animal, ae.created_at AS event_date
+               ae.id_ranch_animal, ae.event_date
         FROM health_incidents hi JOIN animal_events ae ON ae.id = hi.id_event
         WHERE hi.is_synced = 0`,
 };
 
+// animalExits usa el mecanismo genérico (igual que breeding_services etc — needsEvent).
+// movements/movementAnimals son bespoke (ver buildMovementsBatch/buildMovementAnimalsBatch
+// más abajo) porque el backend espera animals[] anidado dentro de cada movement, no una
+// tabla plana — no encajan en el patrón SyncTableConfig genérico.
 const MOVIMIENTOS_CONFIG: SyncTableConfig[] = [
-    { key: 'animalPurchases', table: 'animal_purchases', fkFields: ['id_event'] },
-    { key: 'animalSales',     table: 'animal_sales',     fkFields: ['id_event'] },
-    { key: 'animalTransfers', table: 'animal_transfers',  fkFields: ['id_event', 'id_lot_origin', 'id_lot_dest'] },
-    { key: 'animalExits',     table: 'animal_exits',      fkFields: ['id_event'] },
+    { key: 'animalExits', table: 'animal_exits', fkFields: ['id_event'] },
 ];
-
-const MOVIMIENTOS_QUERIES: Record<string, string> = {
-    animal_purchases: `
-        SELECT ap.id, ap.server_id, ap.sync_action, ap.is_synced, ap.created_at, ap.updated_at,
-               ap.supplier, ap.origin, ap.purchase_price, ap.price_per_kg,
-               ae.id_ranch_animal, ae.created_at AS event_date
-        FROM animal_purchases ap JOIN animal_events ae ON ae.id = ap.id_event
-        WHERE ap.is_synced = 0`,
-    animal_sales: `
-        SELECT asal.id, asal.server_id, asal.sync_action, asal.is_synced, asal.created_at, asal.updated_at,
-               asal.buyer, asal.destination, asal.sale_price, asal.price_per_kg,
-               ae.id_ranch_animal, ae.created_at AS event_date
-        FROM animal_sales asal JOIN animal_events ae ON ae.id = asal.id_event
-        WHERE asal.is_synced = 0`,
-    animal_transfers: `
-        SELECT at2.id, at2.server_id, at2.sync_action, at2.is_synced, at2.created_at, at2.updated_at,
-               at2.id_lot_origin, at2.id_lot_dest, at2.reason,
-               ae.id_ranch_animal, ae.created_at AS event_date
-        FROM animal_transfers at2 JOIN animal_events ae ON ae.id = at2.id_event
-        WHERE at2.is_synced = 0`,
-    animal_exits: `
-        SELECT aex.id, aex.server_id, aex.sync_action, aex.is_synced, aex.created_at, aex.updated_at,
-               aex.reason, aex.notes,
-               ae.id_ranch_animal, ae.created_at AS event_date
-        FROM animal_exits aex JOIN animal_events ae ON ae.id = aex.id_event
-        WHERE aex.is_synced = 0`,
-};
+const MOVIMIENTOS_EXTRA_TABLES = ['movements', 'movement_animals'];
 
 // Tablas únicas (animal_events puede aparecer en config con filtro, deduplicar)
-export const ALL_TABLES = [...new Set([...CRIA_CONFIG, ...RECRIA_CONFIG, ...ENGORDE_CONFIG, ...SANIDAD_CONFIG, ...MOVIMIENTOS_CONFIG].map(c => c.table))];
-const META_FIELDS = new Set(['is_synced', 'server_id', 'sync_action', 'synced_at']);
+export const ALL_TABLES = [...new Set([
+    ...CRIA_CONFIG, ...RECRIA_CONFIG, ...ENGORDE_CONFIG, ...SANIDAD_CONFIG, ...MOVIMIENTOS_CONFIG,
+].map(c => c.table).concat(MOVIMIENTOS_EXTRA_TABLES))];
+// event_date entra acá para que buildData() no lo filtre al payload de `data` (el servidor
+// lo ignoraría igual — EventSyncOperationDto.happenedAt es el único campo que usa para
+// "eventDate", ver toBatchItems más abajo — pero no tiene sentido mandarlo duplicado).
+const META_FIELDS = new Set(['is_synced', 'server_id', 'sync_action', 'synced_at', 'event_date']);
 
 // Campos que SQLite guarda como string pero el servidor espera como integer
 const FORCE_INT_FIELDS = new Set(['id_ranch']);
@@ -183,10 +161,10 @@ const FORCE_INT_FIELDS = new Set(['id_ranch']);
 
 async function refreshAuthToken(): Promise<void> {
     try {
-        const raw = await AsyncStorage.getItem('sync_credentials');
-        if (!raw) return;
-        const { email, password } = JSON.parse(raw) as { email: string; password: string };
-        const res = await fetch(`${API_BASE_URL}/estancia-360/auth/login`, {
+        const credentials = await getCredentials();
+        if (!credentials) return;
+        const { email, password } = credentials;
+        const res = await fetch(`${API_BASE_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password }),
@@ -321,7 +299,18 @@ function toBatchItems(
             operation: OPERATION_MAP[(row.sync_action as string) ?? 'INSERT'] ?? 'create',
             ...(serverId != null ? { serverId } : {}),
             data: buildData(row, fkFields, serverIdMap, fieldDefaults),
-            happenedAt: (row.created_at ?? row.updated_at) as string | undefined,
+            // El backend (EventSyncOperationDto.happenedAt, ver base-sync-operation.dto.ts:
+            // "When this event happened on the device — Stored as eventDate") usa ESTE campo
+            // como la fecha real del evento para breeding_services/gestation_diagnoses/
+            // parturitions/weanings/weight_records/rearing_selections/fattening_entries/
+            // vaccinations/treatments/health_incidents/animal_exits — ignora cualquier
+            // eventDate que venga dentro de `data`. row.event_date (agregado vía JOIN con
+            // animal_events en las queries de arriba) es la fecha que el operador eligió en
+            // el formulario; created_at/updated_at son metadata de cuándo se guardó la fila
+            // LOCALMENTE, que solo coincide con la real cuando el registro no se backdatea.
+            // Antes esto mandaba siempre created_at — cualquier carga con fecha distinta a
+            // "ahora mismo" sincronizaba con la fecha equivocada.
+            happenedAt: (row.event_date ?? row.created_at ?? row.updated_at) as string | undefined,
         };
     });
 }
@@ -333,6 +322,7 @@ async function markLinkedEventsAsSynced(db: SQLiteDatabase): Promise<void> {
         'breeding_services', 'gestation_diagnoses', 'parturitions', 'weanings',
         'weight_records', 'rearing_selections', 'fattening_entries',
         'vaccinations', 'treatments', 'health_incidents',
+        'movement_animals', 'animal_exits',
     ];
     const unions = linked
         .map(t => `SELECT id_event FROM ${t} WHERE is_synced=1 AND id_event IS NOT NULL`)
@@ -427,7 +417,7 @@ async function syncCria(
             const needsEvent = fkFields.includes('id_event');
             const extra = whereExtra ? ` AND ${whereExtra}` : '';
             const query = needsEvent
-                ? `SELECT t.*, ae.id_ranch_animal FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
+                ? `SELECT t.*, ae.id_ranch_animal, ae.event_date FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
                 : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
             const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
 
@@ -449,7 +439,7 @@ async function syncCria(
     // LOG DIAGNÓSTICO — aparece después de conectar al servidor
     onProgress?.('Enviando datos de Cría...', 30);
     const idRanch = await getRanchId();
-    const response = await apiFetch('/estancia-360/sync/cria', { idRanch, ...batch });
+    const response = await apiFetch('/sync/cria', { idRanch, ...batch });
     console.log('[sync] DIAG pasture[0] data:', JSON.stringify(batch.ranchPastures?.[0]?.data));
     console.log('[sync] DIAG animal[0] data:', JSON.stringify(batch.ranchAnimals?.[0]?.data));
 
@@ -508,7 +498,7 @@ async function syncRecria(
             const needsEvent = fkFields.includes('id_event');
             const extra = whereExtra ? ` AND ${whereExtra}` : '';
             const query = needsEvent
-                ? `SELECT t.*, ae.id_ranch_animal FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
+                ? `SELECT t.*, ae.id_ranch_animal, ae.event_date FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
                 : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
             const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
 
@@ -529,7 +519,7 @@ async function syncRecria(
 
     onProgress?.('Enviando datos de Recría...', 62);
     const idRanch = await getRanchId();
-    const response = await apiFetch('/estancia-360/sync/recria', { idRanch, ...batch });
+    const response = await apiFetch('/sync/recria', { idRanch, ...batch });
 
     onProgress?.('Aplicando respuesta de Recría...', 68);
     const synced = await applyResponse(db, RECRIA_CONFIG, response, errors);
@@ -568,7 +558,7 @@ async function syncEngorde(
             const needsEvent = fkFields.includes('id_event');
             const extra = whereExtra ? ` AND ${whereExtra}` : '';
             const query = needsEvent
-                ? `SELECT t.*, ae.id_ranch_animal FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
+                ? `SELECT t.*, ae.id_ranch_animal, ae.event_date FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
                 : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
             const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
 
@@ -589,7 +579,7 @@ async function syncEngorde(
 
     onProgress?.('Enviando datos de Engorde...', 84);
     const idRanch = await getRanchId();
-    const response = await apiFetch('/estancia-360/sync/engorde', { idRanch, ...batch });
+    const response = await apiFetch('/sync/engorde', { idRanch, ...batch });
 
     onProgress?.('Aplicando respuesta de Engorde...', 90);
     const synced = await applyResponse(db, ENGORDE_CONFIG, response, errors);
@@ -653,13 +643,119 @@ async function syncSanidad(
 
     onProgress?.('Enviando datos de Sanidad...', 94);
     const idRanch = await getRanchId();
-    const response = await apiFetch('/estancia-360/sync/sanidad', { idRanch, ...batch });
+    const response = await apiFetch('/sync/sanidad', { idRanch, ...batch });
 
     onProgress?.('Aplicando respuesta de Sanidad...', 97);
     const synced = await applyResponse(db, SANIDAD_CONFIG, response, errors);
     await markLinkedEventsAsSynced(db);
 
     return { synced, errors };
+}
+
+// Resuelve un FK local a { camelKey: serverId } o { localRef_camelKey: localValue },
+// igual que buildData() pero para armar objetos anidados a mano (animals[] de un movement).
+function resolveFk(camelKey: string, localValue: string, serverIdMap: Map<string, string>): Record<string, unknown> {
+    const serverId = serverIdMap.get(localValue);
+    return serverId ? { [camelKey]: serverId } : { [`localRef_${camelKey}`]: localValue };
+}
+
+function toServerIdValue(rawServerId: string | null | undefined): number | string | undefined {
+    if (!rawServerId) return undefined;
+    return /^\d+$/.test(rawServerId) ? parseInt(rawServerId, 10) : rawServerId;
+}
+
+// Un item de movement_animals dentro de movements[].data.animals[] — forma plana
+// (RegisterMovementAnimalDto), NO el sobre {localId,operation,data} de un batch item.
+function buildMovementAnimalPayload(row: Record<string, unknown>, serverIdMap: Map<string, string>): Record<string, unknown> {
+    const item: Record<string, unknown> = { localId: row.id };
+    if (row.notes) item.notes = row.notes;
+
+    if (row.new_code) {
+        const newAnimal: Record<string, unknown> = {
+            code: row.new_code,
+            sex: row.new_sex,
+            idBreed: row.new_id_breed,
+            idAnimalClass: row.new_id_animal_class,
+            birthdate: row.new_birthdate,
+        };
+        if (row.new_weight != null) newAnimal.weight = row.new_weight;
+        if (row.new_id_productive_status != null) newAnimal.idProductiveStatus = row.new_id_productive_status;
+        if (row.new_id_lot) Object.assign(newAnimal, resolveFk('idLot', row.new_id_lot as string, serverIdMap));
+        item.newAnimal = newAnimal;
+    } else {
+        Object.assign(item, resolveFk('idRanchAnimal', row.id_ranch_animal as string, serverIdMap));
+        if (row.id_lot_dest) Object.assign(item, resolveFk('idLotDest', row.id_lot_dest as string, serverIdMap));
+    }
+    return item;
+}
+
+// Un movement pendiente + sus movement_animals (SIEMPRE agrupados, sin importar si
+// ellos mismos están o no marcados is_synced=0 — un movement recién creado siempre
+// arrastra a todos sus animales, incluso si por algún motivo alguno ya se marcó).
+//
+// Si el movement YA estaba sincronizado (sync_action != 'INSERT', ej. una venta
+// cancelada con cancelMovement()), el backend solo acepta un update de la forma
+// { status: 'cancelled' } (ver SyncMovimientosBatchUseCase.processMovements) — mandar
+// el payload completo de creación en ese caso sería rechazado con 400.
+async function buildMovementsBatch(db: SQLiteDatabase, serverIdMap: Map<string, string>): Promise<BatchItem[]> {
+    const pending = await db.getAllAsync<Record<string, unknown>>(`SELECT * FROM movements WHERE is_synced = 0`);
+    const items: BatchItem[] = [];
+
+    for (const m of pending) {
+        const operation = OPERATION_MAP[(m.sync_action as string) ?? 'INSERT'] ?? 'create';
+        const serverId = toServerIdValue(m.server_id as string | null);
+
+        let data: Record<string, unknown>;
+        if (operation === 'update') {
+            data = { status: m.status };
+        } else {
+            const animalRows = await db.getAllAsync<Record<string, unknown>>(
+                `SELECT * FROM movement_animals WHERE id_movement = ?`, [m.id as string]
+            );
+            data = {
+                movementType: m.movement_type,
+                movementDate: m.movement_date,
+                animals: animalRows.map(row => buildMovementAnimalPayload(row, serverIdMap)),
+            };
+            if (m.counterpart_name) data.counterpartName = m.counterpart_name;
+            if (m.origin_name) data.originName = m.origin_name;
+            if (m.total_price != null) data.totalPrice = m.total_price;
+            if (m.price_per_kg != null) data.pricePerKg = m.price_per_kg;
+            if (m.notes) data.notes = m.notes;
+        }
+
+        items.push({
+            localId: m.id as string,
+            operation,
+            ...(serverId != null ? { serverId } : {}),
+            data,
+            happenedAt: m.created_at as string,
+        });
+    }
+    return items;
+}
+
+// movement_animals sueltos: solo los que cambiaron DESPUÉS de que su movement padre ya
+// sincronizó (el flujo de confirmar/rechazar una venta pendiente). Los que nacieron junto
+// con un movement todavía no sincronizado van dentro de buildMovementsBatch, no acá.
+async function buildMovementAnimalsBatch(db: SQLiteDatabase): Promise<BatchItem[]> {
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+        `SELECT ma.* FROM movement_animals ma
+         JOIN movements m ON m.id = ma.id_movement
+         WHERE ma.is_synced = 0 AND m.is_synced = 1`
+    );
+    return rows.map(row => {
+        const serverId = toServerIdValue(row.server_id as string | null);
+        const data: Record<string, unknown> = { status: row.status };
+        if (row.notes) data.notes = row.notes;
+        return {
+            localId: row.id as string,
+            operation: 'update' as const,
+            ...(serverId != null ? { serverId } : {}),
+            data,
+            happenedAt: row.updated_at as string,
+        };
+    });
 }
 
 async function syncMovimientos(
@@ -670,7 +766,7 @@ async function syncMovimientos(
     const errors: SyncError[] = [];
 
     let hasPending = false;
-    for (const { table } of MOVIMIENTOS_CONFIG) {
+    for (const table of [...MOVIMIENTOS_CONFIG.map(c => c.table), ...MOVIMIENTOS_EXTRA_TABLES]) {
         try {
             const row = await db.getFirstAsync<{ count: number }>(
                 `SELECT COUNT(*) as count FROM ${table} WHERE is_synced = 0`
@@ -685,26 +781,55 @@ async function syncMovimientos(
 
     onProgress?.('Preparando datos de Movimientos...', 97);
     const batch: Record<string, BatchItem[]> = {};
-    for (const { key, table, fkFields } of MOVIMIENTOS_CONFIG) {
-        try {
-            const query = MOVIMIENTOS_QUERIES[table];
-            const rows = await db.getAllAsync<Record<string, unknown>>(query);
-            if (rows.length > 0) {
-                batch[key] = toBatchItems(rows, fkFields, serverIdMap);
-                console.log(`[sync] movimientos batch ${key}: ${rows.length} registros`);
-            }
-        } catch (e) { console.warn(`[sync] batch error ${table}:`, e); }
-    }
+
+    try {
+        const exitRows = await db.getAllAsync<Record<string, unknown>>(
+            `SELECT t.*, ae.id_ranch_animal, ae.event_date FROM animal_exits t
+             LEFT JOIN animal_events ae ON ae.id = t.id_event
+             WHERE t.is_synced = 0`
+        );
+        if (exitRows.length > 0) {
+            batch.animalExits = toBatchItems(exitRows, ['id_event', 'id_ranch_animal'], serverIdMap);
+        }
+    } catch (e) { console.warn('[sync] batch error animal_exits:', e); }
+
+    try {
+        const movementItems = await buildMovementsBatch(db, serverIdMap);
+        if (movementItems.length > 0) batch.movements = movementItems;
+    } catch (e) { console.warn('[sync] batch error movements:', e); }
+
+    try {
+        const movementAnimalItems = await buildMovementAnimalsBatch(db);
+        if (movementAnimalItems.length > 0) batch.movementAnimals = movementAnimalItems;
+    } catch (e) { console.warn('[sync] batch error movement_animals:', e); }
 
     if (Object.keys(batch).length === 0) return { synced: 0, errors: [] };
 
+    console.log('[sync] movimientos payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
+
     onProgress?.('Enviando datos de Movimientos...', 98);
     const idRanch = await getRanchId();
-    const response = await apiFetch('/estancia-360/sync/movimientos', { idRanch, ...batch });
+    const response = await apiFetch('/sync/movimientos', { idRanch, ...batch });
 
     onProgress?.('Aplicando respuesta de Movimientos...', 99);
-    const synced = await applyResponse(db, MOVIMIENTOS_CONFIG, response, errors);
+    const synced = await applyResponse(db, [
+        { key: 'animalExits', table: 'animal_exits' },
+        { key: 'movements', table: 'movements' },
+        { key: 'movementAnimals', table: 'movement_animals' },
+    ], response, errors);
     await markLinkedEventsAsSynced(db);
+
+    // Actualizar el mapa con los server_ids recién obtenidos — necesario porque un mismo
+    // movement_animal (ej. el animal creado por una compra) puede necesitar resolverse como
+    // FK en un sync posterior dentro de la misma corrida (poco común, pero barato de cubrir).
+    for (const table of ['movements', 'movement_animals', 'animal_exits']) {
+        try {
+            const rows = await db.getAllAsync<{ id: string; server_id: string }>(
+                `SELECT id, server_id FROM ${table} WHERE server_id IS NOT NULL`
+            );
+            for (const r of rows) serverIdMap.set(r.id, r.server_id);
+        } catch { /* tabla no existe */ }
+    }
 
     return { synced, errors };
 }
@@ -798,69 +923,9 @@ export async function getPendingCount(): Promise<number> {
     return total;
 }
 
-export interface PullResult {
-    pulled: number;
-    error?: string;
-}
-
-/**
- * Descarga cambios del servidor y aplica localmente.
- * fullSync=true descarga desde el inicio del tiempo — útil al cambiar de dispositivo.
- */
-export async function pullFromServer(
-    id_ranch: string,
-    options?: { fullSync?: boolean }
-): Promise<PullResult> {
-    const db = await getDb();
-    const token = await getAuthToken();
-    const session = await db.getFirstAsync<{ last_sync: string | null }>(
-        `SELECT last_sync FROM local_session WHERE id = 1`
-    );
-    const since = options?.fullSync
-        ? '1970-01-01T00:00:00.000Z'
-        : (session?.last_sync ?? '1970-01-01T00:00:00.000Z');
-
-    try {
-        const res = await fetch(
-            `${API_BASE_URL}/estancia-360/sync/pull?id_ranch=${id_ranch}&since=${encodeURIComponent(since)}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (!res.ok) return { pulled: 0, error: `HTTP ${res.status}` };
-        const data = await res.json() as Record<string, unknown[]>;
-        let pulled = 0;
-        await db.withTransactionAsync(async () => {
-            for (const [table, records] of Object.entries(data)) {
-                for (const record of records as Record<string, unknown>[]) {
-                    const existing = await db.getFirstAsync<{ is_synced: number }>(
-                        `SELECT is_synced FROM ${table} WHERE server_id = ?`,
-                        [record.id as string]
-                    );
-                    if (!existing) {
-                        const cols = Object.keys(record).join(', ');
-                        const ph = Object.keys(record).map(() => '?').join(', ');
-                        await db.runAsync(
-                            `INSERT OR IGNORE INTO ${table} (server_id, is_synced, ${cols}) VALUES (?, 1, ${ph})`,
-                            [record.id as string, ...Object.values(record)] as any
-                        );
-                        pulled++;
-                    } else if (existing.is_synced === 1) {
-                        const updates = Object.keys(record).filter(k => k !== 'id').map(k => `${k} = ?`).join(', ');
-                        await db.runAsync(
-                            `UPDATE ${table} SET ${updates}, is_synced=1 WHERE server_id=?`,
-                            [...Object.values(record).slice(1), record.id] as any
-                        );
-                        pulled++;
-                    }
-                }
-            }
-        });
-        return { pulled };
-    } catch (err) {
-        return { pulled: 0, error: String(err) };
-    }
-}
-
 // ─── Descarga desde servidor (bootstrap e incremental) ───────────────────────
+// (pullFromServer — el mecanismo GET /sync/pull viejo — se eliminó: sin uso en la UI,
+// ni ruta equivalente en el backend actual. downloadFromServer, abajo, es el real.)
 
 export interface ConflictItem {
     table: string;
@@ -892,7 +957,7 @@ const ENTITY_ORDER = [
     'breedingServices', 'gestationDiagnoses', 'parturitions', 'weanings', 'animalDeclaredHistories',
     'weightRecords', 'rearingSelections', 'fatteningEntries', 'feedRecords',
     'vaccinations', 'treatments', 'healthIncidents',
-    'animalPurchases', 'animalSales', 'animalTransfers', 'animalExits',
+    'movements', 'movementAnimals', 'animalExits',
 ];
 
 const ENTITY_TABLE: Record<string, string> = {
@@ -912,9 +977,8 @@ const ENTITY_TABLE: Record<string, string> = {
     vaccinations:             'vaccinations',
     treatments:               'treatments',
     healthIncidents:          'health_incidents',
-    animalPurchases:          'animal_purchases',
-    animalSales:              'animal_sales',
-    animalTransfers:          'animal_transfers',
+    movements:                'movements',
+    movementAnimals:          'movement_animals',
     animalExits:              'animal_exits',
 };
 
@@ -927,6 +991,72 @@ function normalizeValue(v: unknown): unknown {
     return v ?? null;
 }
 
+// FKs RELACIONALES por tabla (camelCase como llega del JSON del servidor → tabla local
+// referenciada). El servidor manda su id numérico; localmente esas mismas filas viven bajo
+// un UUID (`id`) distinto, con el numérico guardado aparte en `server_id`. Sin esta traducción,
+// escribir el numérico del servidor directo en la columna FK local viola el FOREIGN KEY
+// constraint (¡son PKs de tipo distinto!) y la fila se pierde en silencio.
+//
+// Los campos de CATÁLOGO (idBreed, idStatus, idProductiveStatus, idAnimalClass, idEventType) y
+// los de `idRanch` NO entran acá: se seedean idénticos en ambos lados (catálogo) o no tienen
+// tabla local propia con UUID (idRanch — ver CLAUDE.md mobile), así que pasan sin traducir.
+const FK_RESOLUTION: Record<string, Record<string, string>> = {
+    ranch_lots:               { idRanchPasture: 'ranch_pastures' },
+    ranch_animals:            { idLot: 'ranch_lots', idMother: 'ranch_animals', idFather: 'ranch_animals' },
+    animal_events:            { idRanchAnimal: 'ranch_animals' },
+    breeding_services:        { idEvent: 'animal_events', idAnimalMale: 'ranch_animals' },
+    gestation_diagnoses:      { idEvent: 'animal_events', idService: 'breeding_services' },
+    parturitions:             { idEvent: 'animal_events', idDiagnosis: 'gestation_diagnoses', idCria: 'ranch_animals' },
+    weanings:                 { idEvent: 'animal_events', idCria: 'ranch_animals', idLotDest: 'ranch_lots' },
+    animal_declared_history:  { idRanchAnimal: 'ranch_animals' },
+    weight_records:           { idEvent: 'animal_events', idLot: 'ranch_lots' },
+    rearing_selections:       { idEvent: 'animal_events', idLotDest: 'ranch_lots' },
+    fattening_entries:        { idEvent: 'animal_events' },
+    feed_records:             { idLot: 'ranch_lots' },
+    vaccinations:             { idEvent: 'animal_events' },
+    treatments:               { idEvent: 'animal_events' },
+    health_incidents:         { idEvent: 'animal_events' },
+    movement_animals:         { idMovement: 'movements', idRanchAnimal: 'ranch_animals', idLotOrigin: 'ranch_lots', idLotDest: 'ranch_lots', idEvent: 'animal_events' },
+    animal_exits:             { idEvent: 'animal_events' },
+};
+
+// Campos que el servidor manda pero que NO tienen destino local significativo — se descartan
+// por completo en vez de escribirse (idUser: no hay tabla `users` espejada localmente, y el
+// registro puede pertenecer a OTRO usuario de la estancia que nunca inició sesión en este
+// dispositivo; movements no tiene ni siquiera columna id_user en el schema local).
+const FIELD_EXCLUDE: Record<string, string[]> = {
+    animal_events: ['idUser'],
+    feed_records: ['idUser'],
+    movements: ['idUser'],
+};
+
+// Resuelve un id numérico de servidor a la fila local (UUID) de `targetTable`, primero contra
+// el mapa acumulado del batch en curso (evita un SELECT por cada referencia repetida dentro de
+// la misma descarga) y si no está ahí, contra la DB (para padres sincronizados en una descarga
+// anterior). Si no se encuentra ninguna de las dos formas, devuelve null — la fila se sigue
+// intentando insertar; si la columna es NOT NULL, upsertEntity lo captura como error no bloqueante,
+// igual que cualquier otro fallo de esa fila puntual.
+async function resolveDownloadFk(
+    db: SQLiteDatabase,
+    targetTable: string,
+    serverId: unknown,
+    map: Map<string, string>
+): Promise<string | null> {
+    if (serverId === null || serverId === undefined) return null;
+    const key = `${targetTable}:${String(serverId)}`;
+    const cached = map.get(key);
+    if (cached) return cached;
+    const row = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM ${targetTable} WHERE server_id = ?`,
+        [String(serverId)]
+    );
+    if (row) {
+        map.set(key, row.id);
+        return row.id;
+    }
+    return null;
+}
+
 async function apiGet(endpoint: string, signal?: AbortSignal): Promise<unknown> {
     const url = `${API_BASE_URL}${endpoint}`;
     console.log('[sync] GET', url);
@@ -934,7 +1064,10 @@ async function apiGet(endpoint: string, signal?: AbortSignal): Promise<unknown> 
     const res = await fetch(url, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
-        signal,
+        // Cast: instalar expo-secure-store trajo una segunda declaración de tipos de
+        // AbortSignal (DOM vs la de React Native) que TS no unifica — mismo objeto en
+        // runtime, solo un choque de tipos entre libs.
+        signal: signal as RequestInit['signal'],
     });
     if (!res.ok) {
         const text = await res.text();
@@ -946,15 +1079,22 @@ async function apiGet(endpoint: string, signal?: AbortSignal): Promise<unknown> 
 async function upsertEntity(
     db: SQLiteDatabase,
     table: string,
-    serverEntity: Record<string, unknown>
-): Promise<{ result: 'inserted' | 'updated' | 'conflict'; conflict?: ConflictItem }> {
+    serverEntity: Record<string, unknown>,
+    fkMap: Map<string, string>
+): Promise<{ result: 'inserted' | 'updated' | 'conflict'; id?: string; conflict?: ConflictItem }> {
     const serverId = serverEntity.id as number | string;
+    const fkFields = FK_RESOLUTION[table] ?? {};
+    const excludeFields = FIELD_EXCLUDE[table] ?? [];
 
-    // Build snake_case row: id → server_id, skip localId, convert booleans
+    // Build snake_case row: id → server_id, skip localId/excluidos, traducir FKs relacionales
     const snakeRow: Record<string, unknown> = { server_id: String(serverId), is_synced: 1, synced_at: now() };
     for (const [k, v] of Object.entries(serverEntity)) {
-        if (k === 'id' || k === 'localId') continue;
-        snakeRow[camelToSnake(k)] = normalizeValue(v);
+        if (k === 'id' || k === 'localId' || excludeFields.includes(k)) continue;
+        if (fkFields[k]) {
+            snakeRow[camelToSnake(k)] = await resolveDownloadFk(db, fkFields[k], v, fkMap);
+        } else {
+            snakeRow[camelToSnake(k)] = normalizeValue(v);
+        }
     }
 
     try {
@@ -964,19 +1104,23 @@ async function upsertEntity(
         );
 
         if (!existing) {
-            snakeRow.id = newId();
+            const localId = newId();
+            snakeRow.id = localId;
             const cols = Object.keys(snakeRow).join(', ');
             const phs = Object.keys(snakeRow).map(() => '?').join(', ');
             await db.runAsync(
                 `INSERT INTO ${table} (${cols}) VALUES (${phs})`,
                 Object.values(snakeRow) as any[]
             );
-            return { result: 'inserted' };
+            fkMap.set(`${table}:${String(serverId)}`, localId);
+            return { result: 'inserted', id: localId };
         }
 
         if (existing.is_synced === 0) {
+            fkMap.set(`${table}:${String(serverId)}`, existing.id);
             return {
                 result: 'conflict',
+                id: existing.id,
                 conflict: {
                     table,
                     serverId,
@@ -995,7 +1139,8 @@ async function upsertEntity(
             `UPDATE ${table} SET ${setClauses} WHERE server_id = ?`,
             values as any[]
         );
-        return { result: 'updated' };
+        fkMap.set(`${table}:${String(serverId)}`, existing.id);
+        return { result: 'updated', id: existing.id };
     } catch (e) {
         console.warn(`[sync] upsertEntity ${table} #${serverId}:`, e);
         return { result: 'inserted' }; // treat as non-blocking
@@ -1028,6 +1173,9 @@ export async function downloadFromServer(
     let cursor: string | undefined;
     let pageNum = 0;
     let progress = 10;
+    // Vive por fuera del loop de páginas: un padre insertado en la página 1 (p.ej. un lote)
+    // debe poder resolverse como FK de un hijo que llegue recién en la página 3 (un animal).
+    const fkMap = new Map<string, string>();
 
     try {
         do {
@@ -1039,7 +1187,7 @@ export async function downloadFromServer(
             if (cursor) params.set('cursor', cursor);
             params.set('limit', '200');
             const qs = params.toString();
-            const endpoint = `/estancia-360/sync/download/${idRanch}${qs ? '?' + qs : ''}`;
+            const endpoint = `/sync/download/${idRanch}${qs ? '?' + qs : ''}`;
 
             pageNum++;
             onProgress?.(`Descargando datos (página ${pageNum})...`, Math.min(progress, 75));
@@ -1058,7 +1206,7 @@ export async function downloadFromServer(
                     const table = ENTITY_TABLE[entityKey];
                     const rows = entities[entityKey] ?? [];
                     for (const row of rows) {
-                        const { result, conflict } = await upsertEntity(db, table, row);
+                        const { result, conflict } = await upsertEntity(db, table, row, fkMap);
                         if (result === 'inserted' || result === 'updated') pulled++;
                         if (conflict) conflicts.push(conflict);
                     }
@@ -1097,13 +1245,20 @@ export async function applyConflictResolutions(
     serverTime?: string
 ): Promise<void> {
     const db = await getDb();
+    const fkMap = new Map<string, string>();
     await db.withTransactionAsync(async () => {
         for (const { table, serverId, choice, serverData } of decisions) {
             if (choice !== 'server') continue;
+            const fkFields = FK_RESOLUTION[table] ?? {};
+            const excludeFields = FIELD_EXCLUDE[table] ?? [];
             const snakeRow: Record<string, unknown> = { is_synced: 1, synced_at: now() };
             for (const [k, v] of Object.entries(serverData)) {
-                if (k === 'id' || k === 'localId') continue;
-                snakeRow[camelToSnake(k)] = normalizeValue(v);
+                if (k === 'id' || k === 'localId' || excludeFields.includes(k)) continue;
+                if (fkFields[k]) {
+                    snakeRow[camelToSnake(k)] = await resolveDownloadFk(db, fkFields[k], v, fkMap);
+                } else {
+                    snakeRow[camelToSnake(k)] = normalizeValue(v);
+                }
             }
             const updateEntries = Object.entries(snakeRow);
             const setClauses = updateEntries.map(([k]) => `${k} = ?`).join(', ');

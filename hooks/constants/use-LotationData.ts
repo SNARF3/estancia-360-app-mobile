@@ -20,7 +20,7 @@ export const useLocationData = () => {
         setError(null);
         try {
             // TRUCO: Usamos 'as any' para decirle a TypeScript "confía en mí, voy a revisar qué viene"
-            const response = await getRequest('estancia-360/countries') as any;
+            const response = await getRequest('countries') as any;
 
             console.log('📦 Respuesta Países:', response); // Console log para verificar estructura
 
@@ -50,7 +50,7 @@ export const useLocationData = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await getRequest(`estancia-360/regions/${idCountry}`) as any;
+            const response = await getRequest(`regions/${idCountry}`) as any;
 
             console.log('📦 Respuesta Regiones:', response);
 
@@ -76,7 +76,7 @@ export const useLocationData = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await getRequest(`estancia-360/cities/${idRegion}`) as any;
+            const response = await getRequest(`cities/${idRegion}`) as any;
 
             console.log('📦 Respuesta Ciudades:', response);
 

@@ -204,7 +204,12 @@ export function useBulkImportAnimals() {
             setProgress(30);
 
             const workbook = xlsxRead(base64, { type: 'base64', cellDates: true });
-            const sheetName = workbook.SheetNames[0];
+            // La plantilla real (Planilla_Alta_Inventario.xlsx) trae "Guía de Uso" como primera
+            // hoja (vacía, solo instrucciones) y los datos en "Alta Inventario" — leer por índice
+            // 0 a ciegas hacía que CUALQUIER carga con el archivo real fallara siempre con "el
+            // archivo no contiene datos". Fallback a SheetNames[0] solo para archivos recortados
+            // a mano que no tengan esa hoja con ese nombre exacto.
+            const sheetName = workbook.SheetNames.includes('Alta Inventario') ? 'Alta Inventario' : workbook.SheetNames[0];
             const sheet = workbook.Sheets[sheetName];
             const jsonRows = xlsxUtils.sheet_to_json(sheet, { header: 1, defval: null }) as any[][];
 
@@ -265,6 +270,14 @@ export function useBulkImportAnimals() {
                     .filter(Boolean) as string[]
             )];
 
+            // existingCodes solo cubre lo que ya está en la DB — si el propio Excel trae el
+            // mismo código dos veces, ninguna fila lo detecta acá. Sin este check, ambas filas
+            // pasan validación y, al cargar, el INSERT usa "OR IGNORE": la segunda choca contra
+            // el UNIQUE(id_ranch, code) de la primera y SQLite la descarta sin lanzar error —
+            // loadToDatabase la cuenta igual como "cargada" (nunca entra al catch que
+            // incrementa "omitidos"), así que el resumen final mentía sobre cuántos animales
+            // realmente quedaron en la base.
+            const seenCodesInFile = new Set<string>();
             const validated: ValidatedAnimalRow[] = rawRows.map(raw => {
                 const errors: string[] = [];
                 const sex = mapSex(raw.sex_raw);
@@ -273,7 +286,7 @@ export function useBulkImportAnimals() {
 
                 // Clase: buscar en DB, si no hay match se deja pendiente (class_check)
                 const classMatch = findClassInDb(raw.category_raw, activeClasses);
-                const id_animal_class = classMatch?.id ?? (sex === 'F' ? 8 : 10); // fallback Vaca/Toro
+                const id_animal_class = classMatch?.id ?? (sex === 'F' ? 8 : 10); // fallback Vaca/Torillo
                 const id_productive_status = classMatch?.default_productive_status ?? PRODUCTIVE_STATUSES.CRIA;
 
                 const id_breed = resolveBreedId(raw.breed_raw, breedRows);
@@ -293,6 +306,8 @@ export function useBulkImportAnimals() {
 
                 if (!raw.code) errors.push('Código vacío');
                 else if (existingCodes.has(raw.code)) errors.push(`Código "${raw.code}" ya existe`);
+                else if (seenCodesInFile.has(raw.code)) errors.push(`Código "${raw.code}" repetido en el archivo`);
+                if (raw.code) seenCodesInFile.add(raw.code);
                 if (!sex) errors.push(`Sexo inválido: "${raw.sex_raw}"`);
                 if (!birthdate) errors.push(`Fecha o Edad inválida`);
 
