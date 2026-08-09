@@ -17,7 +17,7 @@ import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useVaccination, type VaccineEntry } from '../../../../../../hooks/health/use-Vaccination';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 
 const COMMON_VACCINES = ['Aftosa', 'Brucelosis', 'IBR', 'DVB', 'Carbunclo', 'Leptospirosis', 'Mancha negra'];
 

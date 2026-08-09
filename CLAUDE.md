@@ -416,7 +416,10 @@ el móvil — todo el chequeo usa el `idUser` que ya viaja en el JWT.
 
 ## Convenciones
 
-- Estilos de formularios: `import { breedingFormStyles as styles } from '../breeding/breedingFormStyles'`
+- Estilos de formularios: `import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles'` — el
+  prefijo `_` es obligatorio: Expo Router trata todo archivo dentro de `app/` como candidato a ruta y
+  falla con "missing the required default export" si no lo tiene (bug reportado 2026-08-08, causaba
+  el error mostrándose en pantalla al iniciar la app)
 - Rutas de módulos Ranch anidados: registrar en `Ranch/_layout.tsx`, nunca en `(tabs)/_layout.tsx`
 - Back buttons en pantallas raíz: `router.replace(origen)`, nunca `router.back()` desnudo
 - Params a formularios: `useLocalSearchParams<{...}>()` + `useEffect` para pre-llenar

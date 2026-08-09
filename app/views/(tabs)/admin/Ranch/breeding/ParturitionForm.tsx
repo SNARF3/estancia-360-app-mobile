@@ -22,7 +22,7 @@ import {
     MOTHER_CONDITION_LABELS,
 } from '../../../../../../hooks/breeding/breeding.types';
 import { useParturition } from '../../../../../../hooks/breeding/use-Parturition';
-import { breedingFormStyles as styles } from './breedingFormStyles';
+import { breedingFormStyles as styles } from './_breedingFormStyles';
 
 export default function ParturitionForm() {
     const insets = useSafeAreaInsets();

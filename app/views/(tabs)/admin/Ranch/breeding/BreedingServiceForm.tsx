@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { SERVICE_TYPE_LABELS } from '../../../../../../hooks/breeding/breeding.types';
 import { useBreedingService } from '../../../../../../hooks/breeding/use-BreedingService';
-import { breedingFormStyles as styles } from './breedingFormStyles';
+import { breedingFormStyles as styles } from './_breedingFormStyles';
 
 export default function BreedingServiceForm() {
     const insets = useSafeAreaInsets();

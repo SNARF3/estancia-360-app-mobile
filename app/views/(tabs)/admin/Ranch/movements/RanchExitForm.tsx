@@ -7,7 +7,7 @@ import { AnimalMultiPickerModal } from '../../../../../../components/common/Anim
 import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { Colors } from '../../../../../../constants/theme';
 import { useAnimalRanchExit } from '../../../../../../hooks/movements/use-AnimalRanchExit';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 
 export default function RanchExitForm() {
     const insets = useSafeAreaInsets();

@@ -16,7 +16,7 @@ import { LotSelectorModal } from '../../../../../../components/common/LotSelecto
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useFatteningEntry } from '../../../../../../hooks/fattening/use-FatteningEntry';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 
 const SYSTEM_TYPES = [
   { value: 'field' as const, label: 'Pastoreo' },

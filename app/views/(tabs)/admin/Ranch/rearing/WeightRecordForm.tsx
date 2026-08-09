@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing } from '../../../../../../constants/theme';

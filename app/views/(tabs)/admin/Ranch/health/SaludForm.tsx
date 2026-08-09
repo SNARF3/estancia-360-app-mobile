@@ -19,7 +19,7 @@ import { Colors } from '../../../../../../constants/theme';
 import { useHealthIncident } from '../../../../../../hooks/health/use-HealthIncident';
 import { useTreatment, type MedEntry } from '../../../../../../hooks/health/use-Treatment';
 import { useVaccination, type VaccineEntry } from '../../../../../../hooks/health/use-Vaccination';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 
 type HealthType = 'vacunacion' | 'tratamiento' | 'incidente';
 

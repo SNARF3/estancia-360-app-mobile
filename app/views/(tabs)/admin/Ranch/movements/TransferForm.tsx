@@ -8,7 +8,7 @@ import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { LotSelectorModal } from '../../../../../../components/common/LotSelectorModal';
 import { Colors } from '../../../../../../constants/theme';
 import { useAnimalTransfer } from '../../../../../../hooks/movements/use-AnimalTransfer';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 
 export default function TransferForm() {
     const insets = useSafeAreaInsets();

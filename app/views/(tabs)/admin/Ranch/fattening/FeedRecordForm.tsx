@@ -16,7 +16,7 @@ import { LotSelectorModal } from '../../../../../../components/common/LotSelecto
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useFeedRecord } from '../../../../../../hooks/fattening/use-FeedRecord';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 
 const UNITS = ['kg', 'tn', 'lt', 'bolsas'];
 const FEED_SUGGESTIONS = ['Maíz', 'Sorgo', 'Silo maíz', 'Pastura', 'Pellet proteico', 'Heno', 'Otro'];

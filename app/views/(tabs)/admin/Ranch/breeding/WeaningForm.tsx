@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useWeaning } from '../../../../../../hooks/breeding/use-Weaning';
 import { type Lot } from '../../../../../../hooks/Ranch/use-Pastures';
-import { breedingFormStyles as styles } from './breedingFormStyles';
+import { breedingFormStyles as styles } from './_breedingFormStyles';
 
 export default function WeaningForm() {
     const insets = useSafeAreaInsets();

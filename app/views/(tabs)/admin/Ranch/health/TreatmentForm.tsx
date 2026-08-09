@@ -16,7 +16,7 @@ import { AnimalPickerModal } from '../../../../../../components/common/AnimalPic
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useTreatment, type MedEntry } from '../../../../../../hooks/health/use-Treatment';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
 
 const COMMON_MEDS = ['Oxitetraciclina', 'Penicilina', 'Ivermectina', 'Florfenicol', 'Enrofloxacina'];
 

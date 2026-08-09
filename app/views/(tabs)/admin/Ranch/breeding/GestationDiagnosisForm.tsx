@@ -21,7 +21,7 @@ import {
     DIAGNOSIS_RESULT_LABELS,
 } from '../../../../../../hooks/breeding/breeding.types';
 import { useGestationDiagnosis } from '../../../../../../hooks/breeding/use-GestationDiagnosis';
-import { breedingFormStyles as styles } from './breedingFormStyles';
+import { breedingFormStyles as styles } from './_breedingFormStyles';
 
 export default function GestationDiagnosisForm() {
     const insets = useSafeAreaInsets();
