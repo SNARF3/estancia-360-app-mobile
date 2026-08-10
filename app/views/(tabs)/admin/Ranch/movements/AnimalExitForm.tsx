@@ -7,7 +7,7 @@ import { AnimalPickerModal } from '../../../../../../components/common/AnimalPic
 import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { Colors } from '../../../../../../constants/theme';
 import { type ExitReason, useAnimalExit } from '../../../../../../hooks/movements/use-AnimalExit';
-import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 const REASON_OPTIONS: { value: ExitReason; label: string; icon: string; color: string }[] = [
     { value: 'death',   label: 'Muerte',    icon: 'skull-outline',     color: '#EF4444' },

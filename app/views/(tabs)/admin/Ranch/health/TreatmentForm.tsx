@@ -1,24 +1,33 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
+import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useTreatment, type MedEntry } from '../../../../../../hooks/health/use-Treatment';
-import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 const COMMON_MEDS = ['Oxitetraciclina', 'Penicilina', 'Ivermectina', 'Florfenicol', 'Enrofloxacina'];
+
+function calcWithdrawalDisplay(eventDate: string, withdrawalDaysStr: string): string {
+  const days = parseInt(withdrawalDaysStr);
+  if (!eventDate || isNaN(days)) return '';
+  const d = new Date(eventDate);
+  d.setDate(d.getDate() + days);
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
 
 function MedRow({
   entry,
@@ -40,8 +49,8 @@ function MedRow({
   canRemove: boolean;
 }) {
   return (
-    <View style={local.medRow}>
-      <View style={local.medRowHeader}>
+    <View style={local.vaccineRow}>
+      <View style={local.vaccineRowHeader}>
         <Text style={styles.label}>MEDICAMENTO</Text>
         {canRemove && (
           <TouchableOpacity onPress={onRemove} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -55,11 +64,11 @@ function MedRow({
         value={entry.medication}
         onChangeText={onMedChange}
       />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={local.chipScroll}>
         {COMMON_MEDS.map((m) => (
           <TouchableOpacity
             key={m}
-            style={[styles.chip, entry.medication === m && styles.chipSelected, { marginRight: 6 }]}
+            style={[styles.chip, entry.medication === m && styles.chipSelected, local.chipItem]}
             onPress={() => onMedChange(m)}
           >
             <Text style={[styles.chipText, entry.medication === m && styles.chipTextSelected]}>{m}</Text>
@@ -84,7 +93,7 @@ function MedRow({
       <Text style={styles.label}>PERÍODO DE RETIRO (días)</Text>
       <TextInput
         style={styles.input}
-        placeholder="Días antes de faena / comercialización"
+        placeholder="Días antes de faena"
         value={entry.withdrawalDays}
         onChangeText={onWithdrawalChange}
         keyboardType="number-pad"
@@ -98,23 +107,21 @@ function MedRow({
   );
 }
 
-function calcWithdrawalDisplay(eventDate: string, withdrawalDaysStr: string): string {
-  const days = parseInt(withdrawalDaysStr);
-  if (!eventDate || isNaN(days)) return '';
-  const d = new Date(eventDate);
-  d.setDate(d.getDate() + days);
-  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
 export default function TreatmentForm() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [isPickerVisible, setIsPickerVisible] = useState(false);
   const { animalCode: paramCode, from } = useLocalSearchParams<{ animalCode?: string; from?: string }>();
-  const { formData, updateField, updateMed, addMed, removeMed, saveRecord, resetForm, loading, error } = useTreatment();
+  const [isPickerVisible, setIsPickerVisible] = useState(false);
 
+  const treat = useTreatment();
+
+  const isFirstParamSync = useRef(true);
   useEffect(() => {
-    if (paramCode) updateField('animalCode', paramCode.toUpperCase());
+    if (paramCode) {
+      if (!isFirstParamSync.current) treat.resetForm();
+      treat.updateField('animalCode', paramCode.toUpperCase());
+    }
+    isFirstParamSync.current = false;
   }, [paramCode]);
 
   const handleBack = () => {
@@ -126,28 +133,26 @@ export default function TreatmentForm() {
   };
 
   const handleSave = async () => {
-    const ok = await saveRecord();
+    const ok = await treat.saveRecord();
     if (ok) {
-      const count = formData.meds.filter(m => m.medication.trim()).length;
-      Alert.alert(
-        'Tratamiento registrado',
-        `${count} medicamento${count > 1 ? 's' : ''} registrado${count > 1 ? 's' : ''} para ${formData.animalCode}.`,
-        [
-          { text: 'Nuevo tratamiento', onPress: resetForm },
-          { text: 'Volver', onPress: handleBack },
-        ]
-      );
+      const count = treat.formData.meds.filter(m => m.medication.trim()).length;
+      const successMsg = `${count} medicamento${count > 1 ? 's' : ''} registrado${count > 1 ? 's' : ''} para ${treat.formData.animalCode}.`;
+      Alert.alert('Registrado', successMsg, [
+        { text: 'Nuevo registro', onPress: treat.resetForm },
+        { text: 'Volver', onPress: handleBack },
+      ]);
     }
   };
 
   return (
     <KeyboardAvoidingView style={styles.mainContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <View style={styles.headerTextContainer}>
-          <Text style={styles.title}>Registrar Tratamiento</Text>
+          <Text style={styles.title}>Tratamiento</Text>
           <Text style={styles.subtitle}>Sanidad del rodeo</Text>
         </View>
         <View style={[styles.headerIcon, { backgroundColor: '#F9731620' }]}>
@@ -156,7 +161,6 @@ export default function TreatmentForm() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Animal */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Animal</Text>
           <Text style={styles.label}>CÓDIGO DEL ANIMAL *</Text>
@@ -165,45 +169,44 @@ export default function TreatmentForm() {
             onPress={() => setIsPickerVisible(true)}
             activeOpacity={0.7}
           >
-            <Text style={{ fontSize: 16, color: formData.animalCode ? Colors.textPrimary : Colors.textDisabled }}>
-              {formData.animalCode || 'Buscar animal...'}
+            <Text style={{ fontSize: 16, color: treat.formData.animalCode ? Colors.textPrimary : Colors.textDisabled }}>
+              {treat.formData.animalCode || 'Buscar animal...'}
             </Text>
             <Ionicons name="search" size={18} color={Colors.textDisabled} />
           </TouchableOpacity>
-        </View>
-
-        {/* Tratamiento */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Datos del Tratamiento</Text>
 
           <Text style={styles.label}>FECHA *</Text>
-          <DateSelector value={formData.eventDate} onChange={(d) => updateField('eventDate', d)} label="" />
+          <DateSelector value={treat.formData.eventDate} onChange={(v) => treat.updateField('eventDate', v)} label="" />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Datos del Tratamiento</Text>
 
           <Text style={styles.label}>ENFERMEDAD / DIAGNÓSTICO</Text>
           <TextInput
             style={styles.input}
             placeholder="Ej: Mastitis, Neumonía..."
-            value={formData.illness}
-            onChangeText={(v) => updateField('illness', v)}
+            value={treat.formData.illness}
+            onChangeText={(v) => treat.updateField('illness', v)}
           />
 
           <Text style={[styles.sectionTitle, { fontSize: 13, marginTop: 8 }]}>Medicamentos aplicados</Text>
 
-          {formData.meds.map((entry) => (
+          {treat.formData.meds.map((entry) => (
             <MedRow
               key={entry.id}
               entry={entry}
-              eventDate={formData.eventDate}
-              onMedChange={(v) => updateMed(entry.id, 'medication', v)}
-              onDoseChange={(v) => updateMed(entry.id, 'dose', v)}
-              onDurationChange={(v) => updateMed(entry.id, 'durationDays', v)}
-              onWithdrawalChange={(v) => updateMed(entry.id, 'withdrawalDays', v)}
-              onRemove={() => removeMed(entry.id)}
-              canRemove={formData.meds.length > 1}
+              eventDate={treat.formData.eventDate}
+              onMedChange={(v) => treat.updateMed(entry.id, 'medication', v)}
+              onDoseChange={(v) => treat.updateMed(entry.id, 'dose', v)}
+              onDurationChange={(v) => treat.updateMed(entry.id, 'durationDays', v)}
+              onWithdrawalChange={(v) => treat.updateMed(entry.id, 'withdrawalDays', v)}
+              onRemove={() => treat.removeMed(entry.id)}
+              canRemove={treat.formData.meds.length > 1}
             />
           ))}
 
-          <TouchableOpacity style={local.addBtn} onPress={addMed}>
+          <TouchableOpacity style={local.addBtn} onPress={treat.addMed}>
             <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
             <Text style={local.addBtnTxt}>Agregar otro medicamento</Text>
           </TouchableOpacity>
@@ -212,35 +215,35 @@ export default function TreatmentForm() {
           <TextInput
             style={styles.input}
             placeholder="Nombre del veterinario o encargado"
-            value={formData.responsible}
-            onChangeText={(v) => updateField('responsible', v)}
+            value={treat.formData.responsible}
+            onChangeText={(v) => treat.updateField('responsible', v)}
           />
 
           <Text style={styles.label}>OBSERVACIONES</Text>
           <TextInput
             style={styles.textArea}
             placeholder="Notas adicionales..."
-            value={formData.notes}
-            onChangeText={(v) => updateField('notes', v)}
+            value={treat.formData.notes}
+            onChangeText={(v) => treat.updateField('notes', v)}
             multiline
             numberOfLines={3}
           />
         </View>
 
-        {error && (
+        {treat.error && (
           <View style={styles.errorBox}>
             <Ionicons name="alert-circle" size={18} color={Colors.error} />
-            <Text style={styles.errorBoxText}>{error}</Text>
+            <Text style={styles.errorBoxText}>{treat.error}</Text>
           </View>
         )}
 
         <TouchableOpacity
-          style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+          style={[styles.saveButton, treat.loading && styles.saveButtonDisabled]}
           onPress={handleSave}
-          disabled={loading}
+          disabled={treat.loading}
           activeOpacity={0.85}
         >
-          {loading ? (
+          {treat.loading ? (
             <Text style={styles.saveButtonText}>Guardando...</Text>
           ) : (
             <>
@@ -254,35 +257,41 @@ export default function TreatmentForm() {
       <AnimalPickerModal
         visible={isPickerVisible}
         onClose={() => setIsPickerVisible(false)}
-        onSelect={(code) => updateField('animalCode', code)}
+        onSelect={(code) => treat.updateField('animalCode', code)}
       />
     </KeyboardAvoidingView>
   );
 }
 
-const local = {
-  medRow: {
+const local = StyleSheet.create({
+  vaccineRow: {
     borderTopWidth: 1,
     borderTopColor: '#F0F0F0',
     paddingTop: 12,
     marginTop: 8,
-  } as const,
-  medRowHeader: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
+  },
+  vaccineRowHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  chipScroll: {
+    marginBottom: 8,
+  },
+  chipItem: {
+    marginRight: 6,
   },
   addBtn: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
     paddingVertical: 10,
     marginTop: 8,
-    justifyContent: 'center' as const,
+    justifyContent: 'center',
   },
   addBtnTxt: {
     fontSize: 14,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: Colors.primary,
   },
-};
+});

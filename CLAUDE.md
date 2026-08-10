@@ -65,6 +65,51 @@ a la URL de producción/Render antes de buildear para un dispositivo real** que 
 máquina que corre el backend local (ver `eas.json`, que sí tiene las URLs correctas por perfil —
 solo el `.env` de dev quedó apuntando a localhost).
 
+### Bug de arranque — loop infinito de remounts con sesión iniciada (resuelto 2026-08-08)
+
+**Síntoma**: con una sesión ya logueada guardada en el dispositivo, la app quedaba parpadeando
+indefinidamente en la pantalla de carga al abrir — nunca llegaba a Management. Pasaba en Expo Go
+(iPhone físico) y muy probablemente también en simulador; no tiraba ningún error en consola, solo
+loggeaba los pasos de `initDatabase()` avanzando de a poco entre parpadeos. **No** era el bug de
+`breedingFormStyles.ts` (ver Convenciones abajo) — ese era un bug real pero distinto y menor, ya
+arreglado antes de encontrar este.
+
+**Causa raíz**: en `app/_layout.tsx`, el `useEffect` que decide la ruta inicial (login guardado →
+`router.replace()` a Management/WorkerManagement/Inicio) vivía en `RootLayout` mismo, FUERA de
+`<DbProvider>`. `DbProvider` no renderiza a ninguno de sus hijos — incluido el `<Stack>`, el
+navegador real — hasta que `initDatabase()` termina. Eso significa que ese `router.replace()` se
+disparaba antes de que existiera ningún navegador montado. Expo Router no lo tolera bien: el árbol
+se reinicia, el efecto se vuelve a disparar, vuelve a pegarle a un navegador que sigue sin existir,
+y así indefinidamente — un loop 100% autosostenido en JS (una sola carga de bundle, confirmado con
+logs de diagnóstico: `RootLayout`/`DbProvider` remontando en pares una y otra vez, sin ninguna línea
+de rebundling de Metro de por medio).
+
+Por qué nadie lo había visto antes: con la DB vacía (instalación limpia, sin sesión) el init es
+casi instantáneo — la ventana de carrera es minúscula y rara vez se dispara. Con sesión iniciada Y
+datos reales cargados (`existingTables N`, más DDL/migraciones que correr), el init tarda lo
+suficiente como para que la ventana de carrera se dispare siempre. La verificación de
+"arranca bien" del 2026-08-05 (ver arriba) fue con una instalación limpia sin login — nunca
+ejercitó este camino.
+
+**Se descartaron primero, con evidencia, dos hipótesis que NO eran la causa** (dejar registrado
+para no volver a perder tiempo ahí): `experiments.reactCompiler` en `app.json` (desactivarlo no
+cambió nada) y `experiments.typedRoutes` (desactivarlo tampoco, confirmado además que
+`.expo/types/router.d.ts` dejó de regenerarse y el loop siguió igual). Tampoco era un problema de
+red/Expo Go — confirmado con `expo start` en modo LAN, sin túnel. Se actualizaron de paso
+`expo`/`expo-router`/`expo-file-system`/`expo-font` a las versiones esperadas por el SDK instalado
+(`npx expo install --fix`) porque el CLI avisaba desfasaje, pero tampoco era la causa.
+
+**Fix**: la lógica de navegación se movió a un componente nuevo, `AuthGate`, renderizado DENTRO de
+`<DbProvider>` (junto al `<Stack>`) en vez de en `RootLayout` directamente — así su `useEffect` solo
+puede correr una vez que el `Stack` ya está montado, sin excepción. De paso, `app/index.tsx` dejó de
+hacer su propio `<Redirect>` incondicional a Inicio (competía con `AuthGate` como segunda fuente de
+navegación) — ahora solo `AuthGate` decide la ruta inicial.
+
+**Regla para no repetirlo**: cualquier `useEffect` que llame `router.replace()`/`router.push()` al
+montar tiene que vivir en un componente que esté garantizado a montar DESPUÉS de que el `<Stack>`
+raíz ya exista — es decir, adentro de `<DbProvider>`, nunca en `RootLayout` directamente ni en
+ningún componente hermano/ancestro de `DbProvider`.
+
 ---
 
 ## Arquitectura General
@@ -78,16 +123,16 @@ app/views/
       Ranch/
         Animals/      ← Inventario (AnimalMenu, AddAnimal, DetailAnimal)
         Pastures/     ← Potreros y Lotes (PasturesMenu, LotDetail)
-        breeding/     ← Cría (BreedingMenu + 5 formularios)
-        rearing/      ← Recría (RearingMenu, WeightRecordForm)
-        fattening/    ← Engorde (FatteningMenu, FatteningEntryForm, FeedRecordForm)
-        health/       ← Sanidad (HealthMenu + VaccinationForm/TreatmentForm/HealthIncidentForm)
+        breeding/     ← Cría (BreedingServiceForm, GestationDiagnosisForm, ParturitionForm, WeaningForm)
+        rearing/      ← Recría (WeightRecordForm)
+        health/       ← Sanidad (VaccinationForm, TreatmentForm, HealthIncidentForm — 3 pantallas
+                         independientes, no un formulario unificado, ver nota en "Menú principal")
         movements/    ← Movimientos (MovimientosMenu, Purchase/Sale/Transfer/RanchExitForm,
                          AnimalExitForm, PendingSalesScreen)
       Registros/      ← RegistrosMenu (accesos a cargas masivas por módulo)
       bulkImport/     ← Wizards de importación Excel (uno por módulo, ver sección propia)
       sync/           ← SyncScreen (upload + download + resolución de conflictos)
-      weights/        ← WeightsScreen (resumen de pesos recría/engorde)
+      weights/        ← WeightsScreen (resumen de todos los pesajes cargados, por animal y por lote)
     worker/           ← Flujo del rol Worker (QR, WorkerManagement)
     users/            ← Perfil
 
@@ -105,7 +150,7 @@ hooks/
       animals.ts        ← CRUD de animales + helpers (hasActiveWithdrawal, setAnimalObservation, etc.)
       events.ts          ← TODOS los registros de eventos (Cría, Recría, Engorde, Sanidad, Movimientos)
     sync.ts              ← syncAll(), downloadFromServer(), applyConflictResolutions(), getPendingCount()
-  breeding/ · rearing/ · fattening/ · health/  ← un hook de formulario por entidad
+  breeding/ · rearing/ · health/  ← un hook de formulario por entidad
   movements/            ← use-AnimalPurchase, use-AnimalSale, use-AnimalTransfer, use-AnimalRanchExit,
                           use-AnimalExit (baja), use-PendingSales (confirmar/rechazar/cancelar venta)
   Animals/
@@ -125,15 +170,79 @@ components/
 
 ## Menú principal (Management.tsx)
 
-4 accesos:
+4 accesos (array `TILES` en el propio archivo — corregido 2026-08-09, la versión anterior de esta
+sección describía accesos que ya no existen como tiles de nivel superior):
 1. **Mis Animales** → `Ranch/Animals/AnimalMenu`
-2. **Cargas Masivas** → `Registros/RegistrosMenu` (ver sección Cargas Masivas)
-3. **Potreros** → `Ranch/Pastures/PasturesMenu`
-4. **Mi Equipo** → `management/QrWorkerGenerator`
+2. **Registrar Datos** → `Registros/RegistrosMenu` (cargas masivas por módulo, ver sección Cargas Masivas)
+3. **Potreros y Lotes** → `Ranch/Pastures/PasturesMenu`
+4. **Pesos** → `weights/WeightsScreen`
 
-Cría, Recría, Engorde y Sanidad son acciones de un animal individual → solo desde AnimalMenu (menú
-3 puntos). **Movimientos** tiene su propio menú (`Ranch/movements/MovimientosMenu`), no vive dentro
-de AnimalMenu porque opera sobre grupos de animales, no sobre uno solo — se accede desde `RanchMenu`.
+Cría, Recría y Sanidad son acciones de un animal individual — el menú contextual de 3 puntos que
+vivía en `AnimalMenu` (con acceso directo por animal) **se eliminó** (ver nota fechada abajo); hoy se
+accede exclusivamente desde `Registros/RegistrosMenu`, donde el animal se busca con
+`AnimalPickerModal` dentro de cada formulario. **Movimientos** tiene su propio menú
+(`Ranch/movements/MovimientosMenu`), no vive dentro de AnimalMenu porque opera sobre grupos de
+animales, no sobre uno solo — también se accede desde `Registros/RegistrosMenu`.
+**Mi Equipo**/gestión de trabajadores vive en `app/views/(tabs)/worker/WorkerManagement.tsx`, no es
+un tile de `Management.tsx`.
+
+**Limpieza 2026-08-09 (segunda pasada)**: se eliminó el menú contextual de 3 puntos de `AnimalMenu`
+(quedaba redundante con `RegistrosMenu`, que ya cubre las mismas 12 acciones). Los submenús
+"Reproducción"/"Partos"/"Sanidad" de `RegistrosMenu` usaban `Alert.alert` nativo — se reemplazaron
+por `components/common/OptionsSheetModal.tsx`, un popup propio de la app (tarjeta centrada, fade, no
+bottom-sheet) con ícono por opción (dos íconos nuevos en `AppIcons.tsx`: `DiagnosisIcon`,
+`BirthIcon`). **Sanidad** originalmente se unificó en un solo `SaludForm.tsx` con un selector interno
+de tipo (Vacunación/Tratamiento/Incidente) — se detectó un bug real: el `healthType` inicial se
+fijaba una sola vez vía `useState`, así que si React Navigation reusaba la instancia de pantalla
+(elegís Vacunación, volvés, elegís Tratamiento) quedaba trabado en la primera elección. Se revirtió
+a **3 pantallas independientes** (`VaccinationForm`, `TreatmentForm`, `HealthIncidentForm`, cada una
+con su propia ruta y el mismo patrón de reset-por-`animalCode` que ya usan `BreedingServiceForm`/etc.)
+— cada opción del popup de Sanidad navega a su propia ruta con `?from=registros`, sin parámetro
+`type` (ya no hace falta).
+
+**Limpieza 2026-08-09**: se borraron 8 pantallas de este árbol que quedaron sin ningún
+`router.push`/`Link` real apuntando a ellas — nunca tuvieron un punto de entrada, esta misma sección
+ya documentaba que Cría/Recría/Engorde/Sanidad se acceden "solo desde AnimalMenu", así que sus
+menús propios (`RanchMenu`, `breeding/BreedingMenu`, `rearing/RearingMenu`, `health/HealthMenu`) eran
+código muerto de origen. Borrado junto con ellos: todo `fattening/` (menú + 2 formularios — el único
+módulo enteramente inalcanzable, ninguno de sus 3 archivos tenía otro camino de entrada) y
+`breeding/RearingSelectionForm.tsx` (solo alcanzable desde el `RearingMenu` borrado). Se limpiaron
+también los hooks/funciones que quedaban exclusivamente huérfanos por esa borrada
+(`hooks/breeding/use-RearingSelection.ts`, `hooks/fattening/` completo, `registerFatteningEntry`/
+`registerFeedRecord`/`registerRearingSelection` en `events.ts` — esta última ya estaba huérfana antes
+de esta limpieza, `RearingSelectionForm` hacía el INSERT a mano por SQL directo en vez de llamarla) y
+`useGetRearingSelections` en `use-AnimalHistory.ts` (sin caller; `useAnimalFullHistory`, que sí se
+usa desde `DetailAnimal.tsx`, trae esos mismos datos con su propia query inline).
+
+### Tutorial de bienvenida (spotlight)
+
+Agregado 2026-08-09, extendido el mismo día para incluir el bottom tab bar. Un solo tour continuo
+de 8 pasos: los 4 tiles de arriba primero, después los 4 íconos del tab bar (Mi Estancia, Registros,
+Sync, Perfil), sin cortes — un solo flag de "ya visto", un solo botón de ayuda que lo relanza
+completo. Construido a medida con `Modal` + `View.measureInWindow()` + `Animated` de React Native —
+mismo patrón que `SyncLoadingOverlay`/`ConflictResolutionModal` (`components/common/`), sin agregar
+ninguna librería de onboarding de terceros (se evaluaron `rn-tourguide` y
+`@wrack/react-native-tour-guide`, descartadas por compatibilidad no confirmada con Expo SDK 54/New
+Architecture y por evitar una dependencia externa en un flujo que debe "no fallar").
+
+- `hooks/onboarding/use-Tutorial.ts` — hook `useTutorial(flag, steps)`: maneja refs propias por
+  paso, medición de posición (con reintentos), avance de pasos y persistencia. Cada `TutorialStep`
+  puede traer un `resolveRef` en vez de usar la ref propia del hook — es lo que permite que el tour
+  resalte elementos que no son hijos de quien arma el tour (el tab bar es un hermano de
+  `Management.tsx` en el árbol, no un hijo).
+- `hooks/onboarding/tutorialTargets.ts` — registro compartido (`registerTutorialTarget`/
+  `getTutorialTarget`) donde `BottomTabBar.tsx` expone la ref de cada uno de sus botones
+  (`tabbar_<nombre>`) para que `Management.tsx` los pueda referenciar sin acoplamiento directo.
+- `components/onboarding/TutorialOverlay.tsx` — el overlay visual (recorte animado con easing +
+  crossfade del tooltip entre pasos, para que el cambio de un target a otro se sienta fluido en vez
+  de saltar de golpe).
+- Se muestra automáticamente una sola vez, controlado por el flag `onboarding_<flag>_seen` en
+  AsyncStorage (hoy `onboarding_admin_management_seen`) — mismo storage no-sensible que usa
+  `use-Auth.ts`. Se puede volver a ver manualmente desde dos lugares: el ícono de ayuda (`?`) en el
+  header de `Management.tsx`, o el botón "Ver tutorial" en Perfil (`users/usuario.tsx`) — este
+  último navega a Management con `?startTutorial=1` y `Management.tsx` lo consume para relanzar el
+  tour aunque la pantalla ya estuviera montada (los tabs no se desmontan al cambiar de pestaña).
+- Solo implementado para el rol admin — el flujo de Worker no tiene tutorial todavía.
 
 ---
 
@@ -157,7 +266,7 @@ acumulación de instancias en el Stack):
 
 | Pantalla | Back destino |
 |---|---|
-| AnimalMenu, PasturesMenu, RearingMenu, FatteningMenu, HealthMenu, RanchMenu, MovimientosMenu, RegistrosMenu | `router.replace('/views/(tabs)/admin/management/Management')` |
+| AnimalMenu, PasturesMenu, MovimientosMenu, RegistrosMenu | `router.replace('/views/(tabs)/admin/management/Management')` |
 
 Formularios dentro de cada módulo pueden usar `router.back()` (su origen inmediato es el menú del
 módulo). Auth tiene sus propios back buttons explícitos, ver sección Auth.
@@ -167,6 +276,26 @@ módulo). Auth tiene sus propios back buttons explícitos, ver sección Auth.
 Se oculta cuando el `pathname` contiene: `/admin/Ranch/Animals`, `/admin/Ranch/breeding`,
 `/admin/Ranch/rearing`, `/admin/Ranch/fattening`, `/admin/Ranch/health`, `/admin/Ranch/movements`,
 `/admin/Ranch/Pastures`.
+
+### Animaciones de transición
+
+Dos capas distintas, cada una con su propia config — **no alcanza con tocar una sola** si se quiere
+consistencia en toda la app:
+
+- **Dentro de un mismo módulo** (menú → formulario → volver, ej. todo lo de `Ranch/`): lo gobierna
+  `@react-navigation/native-stack` vía `screenOptions` de cada `Stack` (`Ranch/_layout.tsx`,
+  `Animals/_layout.tsx`, `breeding/_layout.tsx`) — `animation: 'slide_from_right'`,
+  `animationDuration: 300`.
+- **Entre pestañas** (Management ↔ Ranch, Management ↔ Registros, Management ↔ Pesos, y los
+  `router.replace(...)` de "volver al inicio" desde cada menú raíz — ver sección Back buttons): esto
+  NO es push de Stack, es cambio de rama del `Tabs` raíz (`app/views/(tabs)/_layout.tsx`), gobernado
+  por `@react-navigation/bottom-tabs` — `screenOptions={{ animation: 'shift' }}` en ese mismo
+  `_layout.tsx`. `bottom-tabs` v7 solo soporta `'fade'`/`'shift'` (no un slide completo como
+  `native-stack`), pero anima simétrico en ambas direcciones sin configuración extra.
+
+Si agregás una pantalla nueva que cruce de una rama de `Tabs` a otra (cualquier navegación entre
+`admin/management`, `admin/Ranch`, `admin/Registros`, `admin/weights`, `admin/sync`, `users`), ya
+queda cubierta por la config del `Tabs` raíz — no hace falta nada por pantalla.
 
 ---
 
@@ -384,10 +513,10 @@ correspondiente en `BULK_ITEMS`).
 | Módulo | Estado | Acceso | Archivos clave |
 |---|---|---|---|
 | Animales | ✅ | Management → Mis Animales | AnimalMenu, AddAnimal, DetailAnimal |
-| Cría | ✅ | AnimalMenu (3 puntos) | BreedingMenu + 5 formularios + hooks |
-| Recría | ✅ | AnimalMenu (3 puntos) | RearingMenu, WeightRecordForm |
-| Engorde | ✅ | AnimalMenu (3 puntos) | FatteningMenu, FatteningEntryForm, FeedRecordForm |
-| Sanidad | ✅ | AnimalMenu (3 puntos) | HealthMenu + 3 formularios + hooks |
+| Cría | ✅ | Registros → Reproducción/Partos (popup) | BreedingServiceForm, GestationDiagnosisForm, ParturitionForm, WeaningForm + hooks |
+| Recría | ✅ | Registros → Pesajes | WeightRecordForm |
+| Engorde | ❌ Eliminado 2026-08-09 | — | Todo el módulo (`FatteningMenu`, `FatteningEntryForm`, `FeedRecordForm`) era código muerto sin ningún punto de entrada real — borrado en la limpieza, ver nota en "Menú principal" |
+| Sanidad | ✅ | Registros → Sanidad (popup) | VaccinationForm, TreatmentForm, HealthIncidentForm + hooks |
 | Movimientos | ✅ (recién rediseñado, sin test interactivo) | `Ranch/movements/MovimientosMenu` | ver sección propia arriba |
 | Potreros | ✅ | Management → Potreros | PasturesMenu, LotDetail, use-Pastures |
 | Cargas Masivas | ✅ (Sanidad-Vacunas desalineada, ver nota) | Management → Cargas Masivas → RegistrosMenu | ver sección propia |
@@ -416,10 +545,21 @@ el móvil — todo el chequeo usa el `idUser` que ya viaja en el JWT.
 
 ## Convenciones
 
-- Estilos de formularios: `import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles'` — el
-  prefijo `_` es obligatorio: Expo Router trata todo archivo dentro de `app/` como candidato a ruta y
-  falla con "missing the required default export" si no lo tiene (bug reportado 2026-08-08, causaba
-  el error mostrándose en pantalla al iniciar la app)
+- **Ningún archivo no-ruta dentro de `app/`**: Expo Router (v6.0.23 acá, ver `node_modules/expo-router/build/getRoutesCore.js`)
+  escanea TODO `.ts`/`.tsx` bajo `app/` como candidato a ruta, sin excepción por prefijo `_` (esa
+  convención NO existe en esta versión — solo se ignoran `+html`, `+native-intent`, `+api`,
+  `+middleware`, y el nombre reservado `_layout`). Un archivo sin export default ahí (ej. un
+  módulo de estilos compartidos) hace que el router tire `"missing the required default export"`
+  en cada arranque — bug real reportado 2026-08-08, la pantalla quedaba parpadeando/pegada en
+  "Inicializando...". Todo módulo compartido que no sea una pantalla va en `constants/`, `hooks/`
+  o `components/`, nunca dentro de `app/`.
+- Estilos de formularios: `import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles'`
+  (movido a `constants/` 2026-08-08 por el bug de arriba — antes vivía mal ubicado dentro de `app/`)
+- **Navegación al montar (`router.replace`/`router.push` en un `useEffect` de arranque) solo dentro
+  de `<DbProvider>`**, nunca en `RootLayout` directamente ni en un ancestro/hermano suyo — `DbProvider`
+  no monta sus hijos (ni el `<Stack>`) hasta que la DB está lista, y navegar antes de que el `Stack`
+  exista causa un loop de remounts infinito (bug real 2026-08-08, ver sección de arriba y `AuthGate`
+  en `app/_layout.tsx`)
 - Rutas de módulos Ranch anidados: registrar en `Ranch/_layout.tsx`, nunca en `(tabs)/_layout.tsx`
 - Back buttons en pantallas raíz: `router.replace(origen)`, nunca `router.back()` desnudo
 - Params a formularios: `useLocalSearchParams<{...}>()` + `useEffect` para pre-llenar
@@ -447,10 +587,10 @@ tienen la URL correcta cada uno).
 1. ~~Resolver el cuelgue de SQLite en web~~ — **deprioritizado 2026-08-05**: confirmado que es
    exclusivo de web (ver sección de arriba), el simulador de iOS funciona perfecto. No vale la pena
    seguir invirtiendo tiempo acá salvo que se decida soportar web como target real más adelante.
-2. **Testear interactivamente el módulo Movimientos rediseñado** — ahora sí es viable, el simulador
-   de iOS arranca bien (ver confirmación arriba). Nunca se completó un test end-to-end real
-   (compra/venta/traslado/salida/baja multi-animal, confirmar/rechazar/cancelar venta pendiente,
-   sync).
+2. **Testear interactivamente el módulo Movimientos rediseñado** — ahora sí es viable: el arranque
+   con sesión iniciada dejó de loopear (ver bug de arranque resuelto 2026-08-08, arriba) y el
+   simulador arranca bien. Nunca se completó un test end-to-end real (compra/venta/traslado/salida/
+   baja multi-animal, confirmar/rechazar/cancelar venta pendiente, sync).
 3. **Testear el flujo de recuperar contraseña** contra el backend real (necesita credenciales SMTP
    configuradas del lado del backend — ver TAREAS PENDIENTES del CLAUDE.md raíz; el envío por SMTP
    ya se confirmó funcionando desde el backend, falta probarlo de punta a punta desde la app).

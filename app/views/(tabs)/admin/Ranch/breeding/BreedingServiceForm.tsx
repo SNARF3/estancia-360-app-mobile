@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { SERVICE_TYPE_LABELS } from '../../../../../../hooks/breeding/breeding.types';
 import { useBreedingService } from '../../../../../../hooks/breeding/use-BreedingService';
-import { breedingFormStyles as styles } from './_breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 export default function BreedingServiceForm() {
     const insets = useSafeAreaInsets();
@@ -35,10 +35,16 @@ export default function BreedingServiceForm() {
         success,
     } = useBreedingService();
 
+    // Si la pantalla se reusa para otro animal (sin desmontar), limpiamos el formulario
+    // anterior antes de aplicar el código nuevo — evita que se vea un instante el
+    // formulario del animal previo.
+    const isFirstParamSync = useRef(true);
     useEffect(() => {
         if (params.animalCode) {
+            if (!isFirstParamSync.current) resetForm();
             updateField('animalCode', params.animalCode);
         }
+        isFirstParamSync.current = false;
     }, [params.animalCode]);
 
     const handleBack = () => {

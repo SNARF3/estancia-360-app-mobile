@@ -115,6 +115,16 @@ function resolveBreedId(raw: string | null | undefined, breeds: { id: number; na
     return match?.id ?? null;
 }
 
+/** LOTE: exacto primero, coincidencia parcial como fallback (mismo criterio que resolveBreedId) */
+function resolveLotId(raw: string | null | undefined, lots: { id: string; name: string }[]): string | null {
+    if (!raw || lots.length === 0) return null;
+    const v = raw.toString().trim().toLowerCase();
+    const exact = lots.find(l => l.name.toLowerCase().trim() === v);
+    if (exact) return exact.id;
+    const partial = lots.find(l => l.name.toLowerCase().includes(v) || v.includes(l.name.toLowerCase()));
+    return partial?.id ?? null;
+}
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export interface RawAnimalRow {
@@ -259,8 +269,6 @@ export function useBulkImportAnimals() {
             const activeClasses = classRows;
 
             const existingCodes = new Set<string>(existingCodesRows.map(r => r.code));
-            const lotMap = new Map<string, string>();
-            lotRows.forEach(l => lotMap.set(l.name.toLowerCase().trim(), l.id));
 
             setProgress(75);
 
@@ -298,7 +306,7 @@ export function useBulkImportAnimals() {
 
                 let id_lot: string | null = null;
                 if (raw.lot_name_raw) {
-                    id_lot = lotMap.get(raw.lot_name_raw.toLowerCase().trim()) || null;
+                    id_lot = resolveLotId(raw.lot_name_raw, lotRows);
                     if (!id_lot && raw.lot_name_raw.trim() !== '') {
                         errors.push(`Lote "${raw.lot_name_raw}" no existe en el sistema`);
                     }
@@ -346,7 +354,7 @@ export function useBulkImportAnimals() {
                     .filter(Boolean) as string[]
             )].filter(name => resolveBreedId(name, breedRows) === null);
 
-            const notFoundLots = uniqueLotNames.filter(name => !lotMap.has(name.toLowerCase()));
+            const notFoundLots = uniqueLotNames.filter(name => resolveLotId(name, lotRows) === null);
 
             setUnresolvedClasses(unresolvedClassNames.map(name => ({ name, id: null, productive_status: PRODUCTIVE_STATUSES.CRIA })));
             setUnresolvedBreeds(unresolvedBreedNames.map(name => ({ name, id: null })));

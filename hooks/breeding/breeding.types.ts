@@ -6,7 +6,6 @@ export type DiagnosisResult = 'pregnant' | 'empty';
 export type BirthType = 'normal' | 'assisted' | 'cesarean';
 export type CriaStatus = 'alive' | 'dead';
 export type MotherCondition = 'good' | 'regular' | 'bad';
-export type Destination = 'replacement' | 'fattening' | 'sale';
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
     natural: 'Monta Natural',
@@ -39,18 +38,4 @@ export const MOTHER_CONDITION_LABELS: Record<MotherCondition, string> = {
     good: 'Buena',
     regular: 'Regular',
     bad: 'Mala',
-};
-
-export const DESTINATION_LABELS: Record<Destination, string> = {
-    replacement: 'Reposición',
-    fattening: 'Engorde',
-    sale: 'Venta',
-};
-
-export const BODY_CONDITION_LABELS: Record<number, string> = {
-    1: 'Muy Flaca',
-    2: 'Flaca',
-    3: 'Normal',
-    4: 'Gorda',
-    5: 'Muy Gorda',
 };

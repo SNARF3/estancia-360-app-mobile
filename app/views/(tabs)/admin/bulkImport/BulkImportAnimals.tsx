@@ -558,6 +558,7 @@ function LotCheckScreen({
 }) {
     const insets = useSafeAreaInsets();
     const [pastures, setPastures] = useState<{ id: string; name: string }[]>([]);
+    const [existingLots, setExistingLots] = useState<{ id: string; name: string }[]>([]);
     const [modalVisible, setModalVisible] = useState(false);
     const [activeLotName, setActiveLotName] = useState<string | null>(null);
     const [lotType, setLotType] = useState<'recria' | 'engorde' | 'general'>('recria');
@@ -569,10 +570,16 @@ function LotCheckScreen({
             const session = await getSession();
             if (!session) return;
             const db = await getDb();
-            const rows = await db.getAllAsync<{ id: string; name: string }>(
-                `SELECT id, name FROM ranch_pastures WHERE id_ranch = ?`, [session.id_ranch]
-            );
-            setPastures(rows);
+            const [pastureRows, lotRows] = await Promise.all([
+                db.getAllAsync<{ id: string; name: string }>(
+                    `SELECT id, name FROM ranch_pastures WHERE id_ranch = ?`, [session.id_ranch]
+                ),
+                db.getAllAsync<{ id: string; name: string }>(
+                    `SELECT id, name FROM ranch_lots WHERE id_ranch = ? ORDER BY name`, [session.id_ranch]
+                ),
+            ]);
+            setPastures(pastureRows);
+            setExistingLots(lotRows);
         })();
     }, []);
 
@@ -617,7 +624,8 @@ function LotCheckScreen({
             <View style={styles.lotCheckHeader}>
                 <Ionicons name="warning-outline" size={20} color="#92400E" />
                 <Text style={styles.lotCheckHeaderTxt}>
-                    {unresolvedLots.length} lote(s) del Excel no existen localmente. Creálos para continuar.
+                    {unresolvedLots.length} lote(s) del Excel no coinciden con ninguno existente. Vinculalos a un
+                    lote ya creado (revisá que no sea el mismo con otro nombre) o creá uno nuevo.
                 </Text>
             </View>
 
@@ -628,20 +636,39 @@ function LotCheckScreen({
                 renderItem={({ item }) => {
                     const resolved = item.id !== null;
                     return (
-                        <View style={[styles.lotRow, { borderColor: resolved ? Colors.success : Colors.error }]}>
-                            <Ionicons
-                                name={resolved ? 'checkmark-circle' : 'alert-circle-outline'}
-                                size={22}
-                                color={resolved ? Colors.success : Colors.error}
-                            />
-                            <Text style={styles.lotRowName}>{item.name}</Text>
-                            {!resolved && (
-                                <TouchableOpacity style={styles.createLotBtn} onPress={() => openModal(item.name)}>
-                                    <Text style={styles.createLotBtnTxt}>Crear</Text>
-                                </TouchableOpacity>
-                            )}
-                            {resolved && (
-                                <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '700' }}>Creado ✓</Text>
+                        <View style={[styles.lotRow, { flexDirection: 'column', alignItems: 'stretch', borderColor: resolved ? Colors.success : Colors.error }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Ionicons
+                                    name={resolved ? 'checkmark-circle' : 'alert-circle-outline'}
+                                    size={22}
+                                    color={resolved ? Colors.success : Colors.error}
+                                />
+                                <Text style={[styles.lotRowName, { flex: 1 }]}>{item.name}</Text>
+                                {!resolved && (
+                                    <TouchableOpacity style={styles.createLotBtn} onPress={() => openModal(item.name)}>
+                                        <Text style={styles.createLotBtnTxt}>Crear nuevo</Text>
+                                    </TouchableOpacity>
+                                )}
+                                {resolved && (
+                                    <Text style={{ fontSize: 11, color: Colors.success, fontWeight: '700' }}>Resuelto ✓</Text>
+                                )}
+                            </View>
+
+                            {!resolved && existingLots.length > 0 && (
+                                <View style={{ marginTop: 8 }}>
+                                    <Text style={styles.classPickerLabel}>O VINCULAR A UNO EXISTENTE</Text>
+                                    <View style={styles.classPickerRow}>
+                                        {existingLots.map(l => (
+                                            <TouchableOpacity
+                                                key={l.id}
+                                                style={styles.classChip}
+                                                onPress={() => onResolve(item.name, l.id)}
+                                            >
+                                                <Text style={styles.classChipTxt}>{l.name}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </View>
                             )}
                         </View>
                     );

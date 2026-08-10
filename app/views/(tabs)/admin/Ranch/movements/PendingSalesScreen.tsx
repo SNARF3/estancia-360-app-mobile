@@ -6,7 +6,7 @@ import { Alert, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { usePendingSales } from '../../../../../../hooks/movements/use-PendingSales';
-import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 export default function PendingSalesScreen() {
     const insets = useSafeAreaInsets();

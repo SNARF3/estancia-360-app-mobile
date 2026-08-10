@@ -2,15 +2,15 @@ import { Stack } from 'expo-router';
 
 export default function RanchLayout() {
     return (
-        <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="RanchMenu" />
-            <Stack.Screen name="rearing/RearingMenu" />
+        <Stack
+            screenOptions={{
+                headerShown: false,
+                animation: 'slide_from_right',
+                animationDuration: 300,
+                gestureEnabled: false,
+            }}
+        >
             <Stack.Screen name="rearing/WeightRecordForm" />
-            <Stack.Screen name="fattening/FatteningMenu" />
-            <Stack.Screen name="fattening/FatteningEntryForm" />
-            <Stack.Screen name="fattening/FeedRecordForm" />
-            <Stack.Screen name="health/HealthMenu" />
-            <Stack.Screen name="health/SaludForm" />
             <Stack.Screen name="health/VaccinationForm" />
             <Stack.Screen name="health/TreatmentForm" />
             <Stack.Screen name="health/HealthIncidentForm" />

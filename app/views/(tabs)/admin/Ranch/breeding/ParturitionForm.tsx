@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -22,7 +22,7 @@ import {
     MOTHER_CONDITION_LABELS,
 } from '../../../../../../hooks/breeding/breeding.types';
 import { useParturition } from '../../../../../../hooks/breeding/use-Parturition';
-import { breedingFormStyles as styles } from './_breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 export default function ParturitionForm() {
     const insets = useSafeAreaInsets();
@@ -39,10 +39,13 @@ export default function ParturitionForm() {
         success,
     } = useParturition();
 
+    const isFirstParamSync = useRef(true);
     useEffect(() => {
         if (params.animalCode) {
+            if (!isFirstParamSync.current) resetForm();
             updateField('animalCode', params.animalCode);
         }
+        isFirstParamSync.current = false;
     }, [params.animalCode]);
 
     const handleBack = () => {

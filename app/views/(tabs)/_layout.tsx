@@ -7,6 +7,7 @@ export default function TabLayout() {
       tabBar={(props) => <BottomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        animation: 'shift',
       }}
     >
       {/* === TABS VISIBLES EN EL TAB BAR === */}

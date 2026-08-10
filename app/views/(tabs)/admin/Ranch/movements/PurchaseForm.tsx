@@ -8,7 +8,7 @@ import { LotSelectorModal } from '../../../../../../components/common/LotSelecto
 import { Colors } from '../../../../../../constants/theme';
 import { useGetAnimalsData } from '../../../../../../hooks/Animals/offline/use-GetAnimalsData';
 import { useAnimalPurchase, type NewPurchaseAnimalRow } from '../../../../../../hooks/movements/use-AnimalPurchase';
-import { breedingFormStyles as styles } from '../breeding/_breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 const EMPTY_ANIMAL: NewPurchaseAnimalRow = {
     code: '', sex: 'F', idBreed: 0, breedName: '', idAnimalClass: 0, className: '',

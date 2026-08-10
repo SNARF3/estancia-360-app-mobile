@@ -1,82 +1,31 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-    Animated,
     FlatList,
-    Modal,
     RefreshControl,
     StatusBar,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    TouchableWithoutFeedback,
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../../../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import { useAnimalClassification } from '../../../../../../hooks/Animals/offline/use-AnimalClassification';
-import { Animal, useGetListAnimals } from '../../../../../../hooks/Animals/offline/use-GetListAnimals';
-
-// ─── Acciones del menú contextual ─────────────────────────────────────────────
-
-const ANIMAL_ACTIONS: {
-    label: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    route: string;
-    paramKey: string;
-}[] = [
-    { label: 'Registrar Pesaje',      icon: 'scale',            route: '/views/(tabs)/admin/Ranch/rearing/WeightRecordForm',          paramKey: 'animalCode' },
-    { label: 'Vacunación',             icon: 'shield-checkmark', route: '/views/(tabs)/admin/Ranch/health/VaccinationForm',            paramKey: 'animalCode' },
-    { label: 'Tratamiento',            icon: 'bandage',          route: '/views/(tabs)/admin/Ranch/health/TreatmentForm',              paramKey: 'animalCode' },
-    { label: 'Incidente Sanitario',    icon: 'warning',          route: '/views/(tabs)/admin/Ranch/health/HealthIncidentForm',         paramKey: 'animalCode' },
-    { label: 'Registrar Servicio',     icon: 'heart',            route: '/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm',      paramKey: 'animalCode' },
-    { label: 'Diagnóstico Gestación',  icon: 'analytics',        route: '/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm',   paramKey: 'animalCode' },
-    { label: 'Registrar Parto',        icon: 'fitness',          route: '/views/(tabs)/admin/Ranch/breeding/ParturitionForm',          paramKey: 'animalCode' },
-    { label: 'Registrar Destete',      icon: 'git-branch',       route: '/views/(tabs)/admin/Ranch/breeding/WeaningForm',              paramKey: 'criaCode'   },
-    { label: 'Trasladar',              icon: 'swap-horizontal',  route: '/views/(tabs)/admin/Ranch/movements/TransferForm',            paramKey: 'animalCode' },
-    { label: 'Registrar Venta',        icon: 'cash-outline',     route: '/views/(tabs)/admin/Ranch/movements/SaleForm',               paramKey: 'animalCode' },
-    { label: 'Registrar Compra',       icon: 'cart-outline',     route: '/views/(tabs)/admin/Ranch/movements/PurchaseForm',           paramKey: 'animalCode' },
-    { label: 'Registrar Baja',         icon: 'close-circle-outline', route: '/views/(tabs)/admin/Ranch/movements/AnimalExitForm',     paramKey: 'animalCode' },
-];
+import { useGetListAnimals } from '../../../../../../hooks/Animals/offline/use-GetListAnimals';
+import { useSafeRouter } from '../../../../../../hooks/navigation/use-SafeRouter';
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function AnimalMenuScreen() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const router = useSafeRouter();
     const [searchQuery, setSearchQuery] = useState('');
-    const [menuAnimal, setMenuAnimal] = useState<Animal | null>(null);
-    const [menuVisible, setMenuVisible] = useState(false);
-    const menuAnim = useRef(new Animated.Value(0)).current;
 
     const { animals, loading, refreshAnimals, meta } = useGetListAnimals();
     const classifiedAnimals = useAnimalClassification(animals);
-
-    // ── Menú contextual ──────────────────────────────────────────────────────
-
-    const openMenu = useCallback((animal: Animal) => {
-        setMenuAnimal(animal);
-        setMenuVisible(true);
-        Animated.spring(menuAnim, { toValue: 1, useNativeDriver: true, tension: 80, friction: 8 }).start();
-    }, []);
-
-    const closeMenu = useCallback(() => {
-        Animated.timing(menuAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
-            setMenuVisible(false);
-            setMenuAnimal(null);
-        });
-    }, []);
-
-    const handleAction = useCallback((route: string, paramKey: string) => {
-        if (!menuAnimal) return;
-        closeMenu();
-        setTimeout(() => {
-            router.push({ pathname: route as any, params: { [paramKey]: menuAnimal.code } });
-        }, 200);
-    }, [menuAnimal, closeMenu]);
 
     // ── Lista filtrada ───────────────────────────────────────────────────────
 
@@ -135,17 +84,10 @@ export default function AnimalMenuScreen() {
                     <View style={[styles.catPill, { backgroundColor: cls.backgroundColor }]}>
                         <Text style={[styles.catText, { color: cls.color }]}>{cls.category.toUpperCase()}</Text>
                     </View>
-                    <TouchableOpacity
-                        style={styles.dotsBtn}
-                        onPress={() => openMenu(item)}
-                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    >
-                        <Ionicons name="ellipsis-vertical" size={20} color={Colors.textSecondary} />
-                    </TouchableOpacity>
                 </View>
             </TouchableOpacity>
         );
-    }, [openMenu]);
+    }, []);
 
     // ── JSX ──────────────────────────────────────────────────────────────────
 
@@ -221,50 +163,6 @@ export default function AnimalMenuScreen() {
                     <Text style={styles.fabTxt}>NUEVO ANIMAL</Text>
                 </TouchableOpacity>
             </ScreenContainer>
-
-            {/* Menú contextual */}
-            <Modal visible={menuVisible} transparent animationType="none">
-                <TouchableWithoutFeedback onPress={closeMenu}>
-                    <View style={styles.overlay}>
-                        <TouchableWithoutFeedback>
-                            <Animated.View style={[
-                                styles.menu,
-                                {
-                                    opacity: menuAnim,
-                                    transform: [{ scale: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [0.92, 1] }) }],
-                                    paddingBottom: insets.bottom + 16,
-                                },
-                            ]}>
-                                <View style={styles.menuHead}>
-                                    <View style={styles.menuIcon}>
-                                        <Ionicons name="receipt-outline" size={18} color={Colors.primary} />
-                                    </View>
-                                    <Text style={styles.menuCode}>{menuAnimal?.code}</Text>
-                                    <TouchableOpacity onPress={closeMenu}>
-                                        <Ionicons name="close" size={22} color={Colors.textSecondary} />
-                                    </TouchableOpacity>
-                                </View>
-
-                                <Text style={styles.menuSection}>REGISTRAR EVENTO</Text>
-
-                                {ANIMAL_ACTIONS.map((a, i) => (
-                                    <TouchableOpacity
-                                        key={i}
-                                        style={[styles.menuItem, i < ANIMAL_ACTIONS.length - 1 && styles.menuBorder]}
-                                        onPress={() => handleAction(a.route, a.paramKey)}
-                                    >
-                                        <View style={styles.menuItemIcon}>
-                                            <Ionicons name={a.icon} size={18} color={Colors.primary} />
-                                        </View>
-                                        <Text style={styles.menuItemTxt}>{a.label}</Text>
-                                        <Ionicons name="chevron-forward" size={16} color={Colors.textDisabled} />
-                                    </TouchableOpacity>
-                                ))}
-                            </Animated.View>
-                        </TouchableWithoutFeedback>
-                    </View>
-                </TouchableWithoutFeedback>
-            </Modal>
         </View>
     );
 }
@@ -305,22 +203,10 @@ const styles = StyleSheet.create({
     sBadgeText: { fontSize: 10, fontWeight: '800' },
     catPill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
     catText: { fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
-    dotsBtn: { padding: 4 },
 
     fab: { position: 'absolute', bottom: 30, left: Spacing.lg, right: Spacing.lg, backgroundColor: Colors.primaryButton, height: 60, borderRadius: BorderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', ...Shadows.floatingButton, zIndex: 20 },
     fabTxt: { color: Colors.white, fontSize: 18, fontWeight: '800', marginLeft: 10 },
 
     empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.xl * 2, gap: Spacing.md },
     emptyText: { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
-
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
-    menu: { backgroundColor: Colors.white, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, ...Shadows.card },
-    menuHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border },
-    menuIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: Colors.primary + '15', justifyContent: 'center', alignItems: 'center' },
-    menuCode: { flex: 1, fontSize: 17, fontWeight: '800', color: Colors.primary },
-    menuSection: { ...Typography.overline, color: Colors.textDisabled, fontWeight: '700', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.xs },
-    menuItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingVertical: 14 },
-    menuBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
-    menuItemIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primary + '12', justifyContent: 'center', alignItems: 'center' },
-    menuItemTxt: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
 });

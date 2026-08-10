@@ -1,7 +1,5 @@
-import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
-    Alert,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -11,7 +9,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+    BirthIcon,
     CowIcon,
+    DiagnosisIcon,
     DnaIcon,
     HealthIcon,
     IncidentIcon,
@@ -20,44 +20,31 @@ import {
     ScaleIcon,
     TreatmentIcon,
 } from '../../../../../components/icons/AppIcons';
+import { OptionsSheetModal } from '../../../../../components/common/OptionsSheetModal';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
+import { useSafeRouter } from '../../../../../hooks/navigation/use-SafeRouter';
 
-// ─── Helpers de navegación ────────────────────────────────────────────────────
-
-function handleReproduccion(router: ReturnType<typeof useRouter>) {
-    Alert.alert('Reproducción', '¿Qué deseas registrar?', [
-        { text: 'Servicio reproductivo', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm?from=registros' as any) },
-        { text: 'Diagnóstico gestación', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm?from=registros' as any) },
-        { text: 'Cancelar', style: 'cancel' },
-    ]);
-}
-
-function handlePartos(router: ReturnType<typeof useRouter>) {
-    Alert.alert('Partos', '¿Qué deseas registrar?', [
-        { text: 'Registrar parto', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/ParturitionForm?from=registros' as any) },
-        { text: 'Registrar destete', onPress: () => router.push('/views/(tabs)/admin/Ranch/breeding/WeaningForm?from=registros' as any) },
-        { text: 'Cancelar', style: 'cancel' },
-    ]);
-}
+type SafeRouter = ReturnType<typeof useSafeRouter>;
+type SheetKey = 'reproduccion' | 'partos' | 'sanidad';
 
 // ─── Tiles de la grilla ───────────────────────────────────────────────────────
 
 interface GridTile {
     label: string;
     Icon: React.ComponentType<{ color?: string; size?: number }>;
-    onPress: (router: ReturnType<typeof useRouter>) => void;
+    onPress: (router: SafeRouter, openSheet: (sheet: SheetKey) => void) => void;
 }
 
 const GRID_TILES: GridTile[] = [
     {
         label: 'Reproducción',
         Icon: DnaIcon,
-        onPress: (r) => handleReproduccion(r),
+        onPress: (_r, openSheet) => openSheet('reproduccion'),
     },
     {
         label: 'Partos',
         Icon: CowIcon,
-        onPress: (r) => handlePartos(r),
+        onPress: (_r, openSheet) => openSheet('partos'),
     },
     {
         label: 'Pesajes',
@@ -72,7 +59,7 @@ const GRID_TILES: GridTile[] = [
     {
         label: 'Sanidad',
         Icon: HealthIcon,
-        onPress: (r) => r.push('/views/(tabs)/admin/Ranch/health/SaludForm?from=registros' as any),
+        onPress: (_r, openSheet) => openSheet('sanidad'),
     },
     {
         label: 'Movimientos',
@@ -130,8 +117,10 @@ const BULK_ITEMS: BulkItem[] = [
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function RegistrosMenuScreen() {
-    const router = useRouter();
+    const router = useSafeRouter();
     const insets = useSafeAreaInsets();
+    const [activeSheet, setActiveSheet] = useState<SheetKey | null>(null);
+    const closeSheet = () => setActiveSheet(null);
 
     return (
         <View style={styles.root}>
@@ -154,7 +143,7 @@ export default function RegistrosMenuScreen() {
                         <TouchableOpacity
                             key={tile.label}
                             style={styles.tile}
-                            onPress={() => tile.onPress(router)}
+                            onPress={() => tile.onPress(router, setActiveSheet)}
                             activeOpacity={0.82}
                         >
                             <tile.Icon size={56} color="white" />
@@ -190,6 +179,72 @@ export default function RegistrosMenuScreen() {
 
                 <View style={{ height: Spacing.tabBarHeight + 20 }} />
             </ScrollView>
+
+            <OptionsSheetModal
+                visible={activeSheet === 'reproduccion'}
+                title="Reproducción"
+                onClose={closeSheet}
+                options={[
+                    {
+                        key: 'servicio',
+                        label: 'Servicio reproductivo',
+                        Icon: DnaIcon,
+                        onSelect: () => router.push('/views/(tabs)/admin/Ranch/breeding/BreedingServiceForm?from=registros' as any),
+                    },
+                    {
+                        key: 'diagnostico',
+                        label: 'Diagnóstico gestación',
+                        Icon: DiagnosisIcon,
+                        onSelect: () => router.push('/views/(tabs)/admin/Ranch/breeding/GestationDiagnosisForm?from=registros' as any),
+                    },
+                ]}
+            />
+
+            <OptionsSheetModal
+                visible={activeSheet === 'partos'}
+                title="Partos"
+                onClose={closeSheet}
+                options={[
+                    {
+                        key: 'parto',
+                        label: 'Registrar parto',
+                        Icon: BirthIcon,
+                        onSelect: () => router.push('/views/(tabs)/admin/Ranch/breeding/ParturitionForm?from=registros' as any),
+                    },
+                    {
+                        key: 'destete',
+                        label: 'Registrar destete',
+                        Icon: MovementsIcon,
+                        onSelect: () => router.push('/views/(tabs)/admin/Ranch/breeding/WeaningForm?from=registros' as any),
+                    },
+                ]}
+            />
+
+            <OptionsSheetModal
+                visible={activeSheet === 'sanidad'}
+                title="Sanidad"
+                onClose={closeSheet}
+                options={[
+                    {
+                        key: 'vacunacion',
+                        label: 'Vacunación',
+                        Icon: HealthIcon,
+                        onSelect: () => router.push('/views/(tabs)/admin/Ranch/health/VaccinationForm?from=registros' as any),
+                    },
+                    {
+                        key: 'tratamiento',
+                        label: 'Tratamiento',
+                        Icon: TreatmentIcon,
+                        onSelect: () => router.push('/views/(tabs)/admin/Ranch/health/TreatmentForm?from=registros' as any),
+                    },
+                    {
+                        key: 'incidente',
+                        label: 'Incidente Sanitario',
+                        Icon: IncidentIcon,
+                        onSelect: () => router.push('/views/(tabs)/admin/Ranch/health/HealthIncidentForm?from=registros' as any),
+                    },
+                ]}
+            />
         </View>
     );
 }
