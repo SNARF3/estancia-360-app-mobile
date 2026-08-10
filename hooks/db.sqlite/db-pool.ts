@@ -21,16 +21,36 @@ let _initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
  * Inicializa el schema si es la primera vez.
  */
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-    if (_db) return _db;
+    if (_db) {
+        console.log('[db-pool] getDb: devolviendo instancia cacheada (sin re-init)');
+        return _db;
+    }
 
     // Evitar inicializaciones paralelas (race condition en startup)
-    if (_initPromise) return _initPromise;
+    if (_initPromise) {
+        console.log('[db-pool] getDb: init ya en curso, esperando la misma promesa');
+        return _initPromise;
+    }
 
-    _initPromise = initDatabase().then((db) => {
-        _db = db;
-        _initPromise = null;
-        return db;
-    });
+    console.log('[db-pool] getDb: sin cache, arrancando initDatabase()');
+
+    // Si initDatabase() falla, hay que limpiar _initPromise también en el catch —
+    // dejarlo seteado a una promesa rechazada la deja "pegada" ahí para siempre,
+    // así que cualquier getDb() posterior (ej. al guardar un pesaje) revienta con
+    // el mismo error indefinidamente, aunque la causa haya sido transitoria (bug
+    // real encontrado 2026-08-10: un fallo de migración en el primer intento
+    // dejaba el resto de la sesión de la app completamente rota sin forma de
+    // reintentar sin cerrar y reabrir la app entera).
+    _initPromise = initDatabase()
+        .then((db) => {
+            _db = db;
+            _initPromise = null;
+            return db;
+        })
+        .catch((err) => {
+            _initPromise = null;
+            throw err;
+        });
 
     return _initPromise;
 }

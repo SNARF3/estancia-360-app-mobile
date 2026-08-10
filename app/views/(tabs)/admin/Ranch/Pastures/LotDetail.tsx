@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   RefreshControl,
@@ -18,6 +19,10 @@ import { LOT_TYPE_COLORS, LOT_TYPE_LABELS } from '../../../../../../hooks/Ranch/
 import { assignAnimalToLot, getAnimalByCode, getAnimals, updateAnimalProductiveStatus } from '../../../../../../hooks/db.sqlite/repositories/animals';
 import type { Animal } from '../../../../../../hooks/db.sqlite/repositories/animals';
 import type { LotType } from '../../../../../../hooks/Ranch/use-Pastures';
+import { useLotFeedHistory } from '../../../../../../hooks/feeding/use-LotFeedHistory';
+
+const fmtDate = (d: string) =>
+  new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' });
 
 // ─── Constantes de estado productivo ─────────────────────────────────────────
 
@@ -54,6 +59,7 @@ export default function LotDetail() {
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const lotColor = LOT_TYPE_COLORS[lotType] ?? Colors.primary;
+  const { records: feedRecords, loading: feedLoading } = useLotFeedHistory(lotId);
 
   const loadAnimals = useCallback(async () => {
     setLoading(true);
@@ -163,6 +169,28 @@ export default function LotDetail() {
         </Text>
       </View>
 
+      {/* Historial de alimentación */}
+      <View style={styles.feedCard}>
+        <Text style={styles.feedHeader}>ALIMENTACIÓN RECIENTE</Text>
+        {feedLoading ? (
+          <ActivityIndicator color={Colors.primary} />
+        ) : feedRecords.length === 0 ? (
+          <Text style={styles.feedEmpty}>Sin registros de alimentación para este lote</Text>
+        ) : (
+          feedRecords.slice(0, 5).map((r) => (
+            <View key={r.id} style={styles.feedRow}>
+              <View style={styles.feedInfo}>
+                <Text style={styles.feedType}>{r.feed_type}</Text>
+                <Text style={styles.feedDate}>{fmtDate(r.feed_date)}</Text>
+              </View>
+              {r.quantity != null && (
+                <Text style={styles.feedQty}>{r.quantity}{r.unit ? ` ${r.unit}` : ''}</Text>
+              )}
+            </View>
+          ))
+        )}
+      </View>
+
       {/* Lista de animales */}
       <FlatList
         data={animals}
@@ -262,6 +290,58 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.xl,
+  },
+  feedCard: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    ...Shadows.tabBar,
+  },
+  feedHeader: {
+    fontFamily: Typography.fontPrimary,
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.textDisabled,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.sm,
+  },
+  feedEmpty: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 13,
+    color: Colors.textDisabled,
+    textAlign: 'center',
+    paddingVertical: Spacing.sm,
+  },
+  feedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  feedInfo: {
+    flex: 1,
+  },
+  feedType: {
+    fontFamily: Typography.fontPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  feedDate: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  feedQty: {
+    fontFamily: Typography.fontSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textSecondary,
   },
   animalRow: {
     flexDirection: 'row',

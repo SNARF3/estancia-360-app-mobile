@@ -93,6 +93,10 @@ export function useWeightRecord() {
             setSuccess(true);
             return true;
         } catch (e: any) {
+            // El catch anterior solo seteaba el mensaje en la UI y nunca pasaba por
+            // consola — si la terminal de Metro no muestra nada al fallar un pesaje
+            // es por esto, no porque initDatabase()/runMigrations no corrieron.
+            console.error('[useWeightRecord] saveRecord falló:', e);
             setError(e.message ?? 'Error al guardar el pesaje.');
             return false;
         } finally {

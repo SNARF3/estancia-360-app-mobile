@@ -263,6 +263,18 @@ export function BirthIcon({ color = 'white', size = 56 }: IconProps) {
   return <SvgXml xml={xml} width={size} height={size} />;
 }
 
+const feedIconSvg = `<svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M10 22L28 12L46 22L28 32L10 22Z" fill="white" fill-opacity="0.18" stroke="white" stroke-width="2.1875" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 26V38C16 38 20 42 28 42C36 42 40 38 40 38V26" stroke="white" stroke-width="2.1875" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M10 22V30" stroke="white" stroke-width="2.1875" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M46 22V30" stroke="white" stroke-width="2.1875" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+export function FeedIcon({ color = 'white', size = 56 }: IconProps) {
+  const xml = applyColor(feedIconSvg, color);
+  return <SvgXml xml={xml} width={size} height={size} />;
+}
+
 const syncIconSvg = `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
   <path d="M6.12244 13.9943C6.12244 9.91264 8.74634 7.87183 13.9941 7.87183C16.9096 7.87183 19.242 9.03801 20.9912 11.3704" stroke="white" stroke-opacity="0.75" stroke-width="1.09329" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M21.8659 13.9941C21.8659 18.0758 19.242 20.1166 13.9941 20.1166C11.0787 20.1166 8.74634 18.9504 6.99707 16.618" stroke="white" stroke-opacity="0.75" stroke-width="1.09329" stroke-linecap="round" stroke-linejoin="round"/>

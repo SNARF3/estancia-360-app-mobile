@@ -57,13 +57,25 @@ async function createEvent(params: {
         is_synced: 0,
     };
 
-    await db.runAsync(
-        `INSERT INTO animal_events
-       (id, id_user, id_ranch_animal, id_event_type, notes, event_date, created_at, updated_at, is_synced, sync_action)
-     VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
-        [event.id, event.id_user, event.id_ranch_animal, event.id_event_type,
-        event.notes ?? null, event.event_date, event.created_at, event.updated_at]
-    );
+    try {
+        await db.runAsync(
+            `INSERT INTO animal_events
+           (id, id_user, id_ranch_animal, id_event_type, notes, event_date, created_at, updated_at, is_synced, sync_action)
+         VALUES (?,?,?,?,?,?,?,?,0,'INSERT')`,
+            [event.id, event.id_user, event.id_ranch_animal, event.id_event_type,
+            event.notes ?? null, event.event_date, event.created_at, event.updated_at]
+        );
+    } catch (err) {
+        // Diagnóstico 2026-08-09: createEvent es el paso compartido por TODOS los
+        // registros de eventos (Cría/Recría/Engorde/Sanidad) — si esto explota con
+        // "no such table" de nuevo pese al fix de migrations.ts, esto deja registrado
+        // en qué estado real estaba el schema en el momento exacto del fallo.
+        const tables = await db.getAllAsync<{ name: string }>(
+            `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'animal_events%'`
+        ).catch(() => []);
+        console.error('[events] createEvent falló. Tablas animal_events*:', tables, 'Error:', err);
+        throw err;
+    }
 
     return event;
 }
@@ -821,6 +833,38 @@ export async function registerVaccination(input: CreateVaccinationInput) {
     return { event_id, vaccination_ids };
 }
 
+
+// ─── MÓDULO ALIMENTACIÓN — registro por lote ─────────────────────────────────
+// A propósito NO pasa por createEvent: feed_records es el único tipo de registro
+// del sistema que no genera animal_event — se gestiona por lote, no por animal
+// individual (así lo documenta el backend explícitamente).
+
+export interface CreateFeedRecordInput {
+    id_user: string;
+    id_lot: string;
+    feed_date: string;
+    feed_type: string;
+    quantity?: number;
+    unit?: string;
+    cost?: number;
+    notes?: string;
+}
+
+export async function registerFeedRecord(input: CreateFeedRecordInput) {
+    const db = await getDb();
+    const id = newId();
+    const ts = now();
+    await db.runAsync(
+        `INSERT INTO feed_records
+       (id, id_lot, id_user, feed_date, feed_type, quantity, unit, cost, notes,
+        created_at, updated_at, is_synced, sync_action)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,0,'INSERT')`,
+        [id, input.id_lot, input.id_user, input.feed_date, input.feed_type,
+        input.quantity ?? null, input.unit ?? null, input.cost ?? null, input.notes ?? null,
+        ts, ts]
+    );
+    return { id };
+}
 
 // ─── Historial de eventos de un animal ───────────────────────────────────────
 
