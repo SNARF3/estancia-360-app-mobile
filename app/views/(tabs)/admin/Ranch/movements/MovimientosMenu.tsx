@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import { getDb } from '../../../../../../hooks/db.sqlite/db-pool';
 import { getSession } from '../../../../../../hooks/auth/use-Auth';
+import { useSafeRouter } from '../../../../../../hooks/navigation/use-SafeRouter';
 
 interface Stats {
     transfers: number;
@@ -61,16 +62,25 @@ function useMovimientosStats() {
 }
 
 export default function MovimientosMenu() {
-    const router = useRouter();
+    const router = useSafeRouter();
     const insets = useSafeAreaInsets();
     const stats = useMovimientosStats();
+    const { from } = useLocalSearchParams<{ from?: string }>();
+
+    const handleBack = () => {
+        if (from === 'registros') {
+            router.replace('/views/(tabs)/admin/Registros/RegistrosMenu' as any);
+        } else {
+            router.replace('/views/(tabs)/admin/management/Management' as any);
+        }
+    };
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
 
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.replace('/views/(tabs)/admin/management/Management')} style={styles.backBtn}>
+                <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={26} color={Colors.primary} />
                 </TouchableOpacity>
                 <View style={styles.headerText}>

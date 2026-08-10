@@ -67,22 +67,6 @@ export interface WeaningRecord {
     is_synced: number;
 }
 
-export interface RearingSelectionRecord {
-    id: string;
-    event_id: string;
-    event_date: string;
-    animal_code: string;
-    animal_id: string;
-    destination: string;
-    lot_dest_name: string | null;
-    weight_at_selection: number | null;
-    body_condition: number | null;
-    genetic_score: number | null;
-    age_days: number | null;
-    notes: string | null;
-    is_synced: number;
-}
-
 // ─── useGetServices ───────────────────────────────────────────────────────────
 
 export function useGetServices() {
@@ -252,52 +236,6 @@ export function useGetWeanings() {
             setRecords(rows);
         } catch (e) {
             console.error('useGetWeanings:', e);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    return { records, loading, fetch };
-}
-
-// ─── useGetRearingSelections ──────────────────────────────────────────────────
-
-export function useGetRearingSelections() {
-    const [records, setRecords] = useState<RearingSelectionRecord[]>([]);
-    const [loading, setLoading] = useState(false);
-
-    const fetch = useCallback(async (id_ranch_animal?: string) => {
-        setLoading(true);
-        try {
-            const session = await getSession();
-            if (!session) return;
-            const db = await getDb();
-
-            const whereAnimal = id_ranch_animal
-                ? `AND ae.id_ranch_animal = '${id_ranch_animal}'`
-                : '';
-
-            const rows = await db.getAllAsync<RearingSelectionRecord>(
-                `SELECT
-           rs.id, rs.id_event AS event_id,
-           ae.event_date, ae.notes,
-           a.code AS animal_code, a.id AS animal_id,
-           rs.destination,
-           lot.name AS lot_dest_name,
-           rs.weight_at_selection, rs.body_condition,
-           rs.genetic_score, rs.age_days,
-           rs.is_synced
-         FROM rearing_selections rs
-         JOIN animal_events ae ON ae.id = rs.id_event
-         JOIN ranch_animals  a  ON a.id  = ae.id_ranch_animal
-         LEFT JOIN ranch_lots lot ON lot.id = rs.id_lot_dest
-         WHERE a.id_ranch = ? ${whereAnimal}
-         ORDER BY ae.event_date DESC`,
-                [session.id_ranch]
-            );
-            setRecords(rows);
-        } catch (e) {
-            console.error('useGetRearingSelections:', e);
         } finally {
             setLoading(false);
         }

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
     Alert,
@@ -25,6 +25,7 @@ const ROLE_LABELS: Record<number, string> = {
 
 export default function UsuarioScreen() {
     const insets = useSafeAreaInsets();
+    const router = useRouter();
     const [userData, setUserData] = useState<SessionParams | null>(null);
     const [roleName, setRoleName] = useState('Usuario');
     const [animalCount, setAnimalCount] = useState<number | null>(null);
@@ -78,6 +79,10 @@ export default function UsuarioScreen() {
                 },
             ]
         );
+    };
+
+    const handleViewTutorial = () => {
+        router.push('/views/(tabs)/admin/management/Management?startTutorial=1' as any);
     };
 
     const handleClearTestData = () => {
@@ -195,6 +200,12 @@ export default function UsuarioScreen() {
                         </View>
                     ))}
                 </View>
+
+                {/* Ver tutorial */}
+                <TouchableOpacity style={styles.tutorialBtn} onPress={handleViewTutorial} activeOpacity={0.8}>
+                    <Ionicons name="help-circle-outline" size={18} color={Colors.primary} />
+                    <Text style={styles.tutorialBtnText}>Ver tutorial</Text>
+                </TouchableOpacity>
 
                 {/* Borrar datos de prueba */}
                 <TouchableOpacity style={styles.dangerBtn} onPress={handleClearTestData} activeOpacity={0.8}>
@@ -382,6 +393,25 @@ const styles = StyleSheet.create({
     },
 
     // ── Acciones ──────────────────────────────────────────────────────────────
+    tutorialBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        paddingVertical: Spacing.md,
+        borderRadius: BorderRadius.lg,
+        borderWidth: 1,
+        borderColor: Colors.primary + '40',
+        backgroundColor: Colors.white,
+        marginBottom: Spacing.md,
+        ...Shadows.card,
+    },
+    tutorialBtnText: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.primary,
+    },
     dangerBtn: {
         flexDirection: 'row',
         alignItems: 'center',

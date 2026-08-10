@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
-import React from 'react';
+import React, { createRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/theme';
 import { getUserData } from '../../hooks/auth/use-Auth';
+import { registerTutorialTarget } from '../../hooks/onboarding/tutorialTargets';
 
 interface TabItem {
   name: string;
@@ -82,6 +83,21 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
 
   const tabs = ranchRole === 2 ? workerTabs : adminTabs;
 
+  // Refs por nombre de tab, expuestas vía tutorialTargets.ts para que el tour de Management
+  // (que vive en otra rama del árbol — este tab bar es un hermano, no un hijo) pueda resaltar
+  // cada ícono sin que este componente sepa nada del tutorial.
+  const tabRefsRef = React.useRef<Record<string, React.RefObject<View | null>>>({});
+  React.useEffect(() => {
+    tabs.forEach(tab => {
+      if (tab.isCentral) return;
+      if (!tabRefsRef.current[tab.name]) {
+        tabRefsRef.current[tab.name] = createRef<View>();
+      }
+      registerTutorialTarget(`tabbar_${tab.name}`, tabRefsRef.current[tab.name]);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ranchRole]);
+
   const { options } = descriptors[state.routes[state.index].key];
   const isHiddenModule =
     pathname.includes('/admin/Ranch/Animals') ||
@@ -127,24 +143,29 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
           );
         }
 
+        if (!tabRefsRef.current[tab.name]) {
+          tabRefsRef.current[tab.name] = createRef<View>();
+        }
+
         return (
-          <TouchableOpacity
-            key={tab.name}
-            style={styles.tab}
-            onPress={onPress}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.tabIconContainer, isFocused && styles.tabIconContainerActive]}>
-              <Ionicons
-                name={tab.icon as any}
-                size={Typography.tabIcon.fontSize}
-                color={isFocused ? Colors.tabActive : Colors.tabInactive}
-              />
-            </View>
-            <Text style={[styles.tabLabel, { color: isFocused ? Colors.tabActive : Colors.tabInactive }]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
+          <View key={tab.name} ref={tabRefsRef.current[tab.name]} collapsable={false} style={styles.tab}>
+            <TouchableOpacity
+              style={styles.tabTouchable}
+              onPress={onPress}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.tabIconContainer, isFocused && styles.tabIconContainerActive]}>
+                <Ionicons
+                  name={tab.icon as any}
+                  size={Typography.tabIcon.fontSize}
+                  color={isFocused ? Colors.tabActive : Colors.tabInactive}
+                />
+              </View>
+              <Text style={[styles.tabLabel, { color: isFocused ? Colors.tabActive : Colors.tabInactive }]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          </View>
         );
       })}
     </View>
@@ -180,10 +201,13 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    zIndex: 1,
+  },
+  tabTouchable: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: Spacing.xs,
-    zIndex: 1,
   },
   tabIconContainer: {
     padding: Spacing.tabIconPadding,

@@ -6,7 +6,14 @@ import FlashMessage from 'react-native-flash-message';
 import { Colors } from '../constants/theme';
 import { DbProvider } from '../hooks/db.sqlite/DbProvider';
 
-export default function RootLayout() {
+// AuthGate decide la ruta inicial (Inicio/Management/WorkerManagement) llamando
+// router.replace(). Tiene que vivir DENTRO de <DbProvider> (no en RootLayout directo):
+// DbProvider no renderiza el <Stack> — el navegador real — hasta que la DB terminó de
+// inicializar, y llamar router.replace() antes de que exista un navegador montado hace
+// que expo-router reinicie el árbol una y otra vez (loop de remounts infinito,
+// confirmado 2026-08-08 — se disparaba siempre con sesión iniciada porque el init de
+// DB con datos reales tarda más que con una DB vacía, agrandando la ventana de carrera).
+function AuthGate() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -42,19 +49,25 @@ export default function RootLayout() {
         setChecking(false);
       }
     })();
-  }, []); // ← [] vacío: solo corre UNA vez al montar, nunca en hot reload
+  }, []); // ← [] vacío: solo corre UNA vez al montar (que ya ocurre después de isReady)
+
+  if (!checking) return null;
 
   return (
+    <View style={{
+      position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+      justifyContent: 'center', alignItems: 'center',
+      backgroundColor: Colors.background, zIndex: 999,
+    }}>
+      <ActivityIndicator size="large" color={Colors.primary} />
+    </View>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <DbProvider>
-      {checking && (
-        <View style={{
-          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          justifyContent: 'center', alignItems: 'center',
-          backgroundColor: Colors.background, zIndex: 999,
-        }}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-        </View>
-      )}
+      <AuthGate />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: Colors.background },

@@ -10,7 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
+import { AnimalMultiPickerModal } from '../../../../../../components/common/AnimalMultiPickerModal';
+import { CowIcon } from '../../../../../../components/icons/AppIcons';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
 import { getSession } from '../../../../../../hooks/auth/use-Auth';
 import { LOT_TYPE_COLORS, LOT_TYPE_LABELS } from '../../../../../../hooks/Ranch/use-Pastures';
@@ -70,44 +71,42 @@ export default function LotDetail() {
 
   useFocusEffect(useCallback(() => { loadAnimals(); }, [loadAnimals]));
 
-  const handleAddAnimal = async (code: string) => {
+  const handleAddAnimals = async (selected: { id: string; code: string }[]) => {
     try {
       const session = await getSession();
       if (!session?.id_ranch) return;
 
-      const animal = await getAnimalByCode(session.id_ranch, code);
-      if (!animal) {
-        Alert.alert('Animal no encontrado', `No se encontró el animal con código "${code}".`);
-        return;
-      }
-      if (animal.id_lot === lotId) {
-        Alert.alert('Ya en este lote', `El animal ${code} ya está asignado a este lote.`);
-        return;
-      }
-
       const newPs = lotTypeToProductiveStatus(lotType);
-      const stageMsg = newPs ? ` Pasará a etapa ${STATUS_LABELS[newPs]}.` : '';
-      const confirmMsg = animal.id_lot
-        ? `El animal ${code} será movido a "${lotName}".${stageMsg}`
-        : `El animal ${code} será asignado al lote "${lotName}".${stageMsg}`;
+      let added = 0;
+      let alreadyHere = 0;
+      let notFound = 0;
 
-      Alert.alert('Mover al lote', confirmMsg, [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Confirmar',
-          onPress: async () => {
-            if (newPs !== null) {
-              // Actualiza lote + etapa productiva en un solo UPDATE
-              await updateAnimalProductiveStatus(animal.id, newPs, lotId);
-            } else {
-              await assignAnimalToLot(animal.id, lotId);
-            }
-            await loadAnimals();
-          },
-        },
-      ]);
+      for (const sel of selected) {
+        const animal = await getAnimalByCode(session.id_ranch, sel.code);
+        if (!animal) { notFound++; continue; }
+        if (animal.id_lot === lotId) { alreadyHere++; continue; }
+
+        if (newPs !== null) {
+          // Actualiza lote + etapa productiva en un solo UPDATE
+          await updateAnimalProductiveStatus(animal.id, newPs, lotId);
+        } else {
+          await assignAnimalToLot(animal.id, lotId);
+        }
+        added++;
+      }
+
+      await loadAnimals();
+
+      const parts: string[] = [];
+      if (added > 0) {
+        const stageMsg = newPs !== null ? ` Pasaron a etapa ${STATUS_LABELS[newPs]}.` : '';
+        parts.push(`${added} animal${added > 1 ? 'es' : ''} agregado${added > 1 ? 's' : ''} a "${lotName}".${stageMsg}`);
+      }
+      if (alreadyHere > 0) parts.push(`${alreadyHere} ya estaba${alreadyHere > 1 ? 'n' : ''} en este lote.`);
+      if (notFound > 0) parts.push(`${notFound} no se encontró${notFound > 1 ? 'n' : ''}.`);
+      Alert.alert('Lote actualizado', parts.join(' '));
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'No se pudo mover el animal.');
+      Alert.alert('Error', e.message ?? 'No se pudieron mover los animales.');
     }
   };
 
@@ -117,7 +116,7 @@ export default function LotDetail() {
     return (
       <View style={styles.animalRow}>
         <View style={[styles.animalIcon, { backgroundColor: statusColor + '18' }]}>
-          <Ionicons name="paw-outline" size={20} color={statusColor} />
+          <CowIcon size={22} color={statusColor} />
         </View>
         <View style={styles.animalInfo}>
           <Text style={styles.animalCode}>{item.code}</Text>
@@ -158,7 +157,7 @@ export default function LotDetail() {
 
       {/* Resumen */}
       <View style={styles.summaryCard}>
-        <Ionicons name="paw" size={16} color={Colors.textSecondary} />
+        <CowIcon size={18} color={Colors.textSecondary} />
         <Text style={styles.summaryText}>
           {animals.length} animal{animals.length !== 1 ? 'es' : ''} en este lote
         </Text>
@@ -174,7 +173,7 @@ export default function LotDetail() {
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
-              <Ionicons name="paw-outline" size={48} color={Colors.textDisabled} />
+              <CowIcon size={48} color={Colors.textDisabled} />
               <Text style={styles.emptyTitle}>Sin animales</Text>
               <Text style={styles.emptyText}>Toca el botón + para agregar animales a este lote.</Text>
             </View>
@@ -182,10 +181,11 @@ export default function LotDetail() {
         }
       />
 
-      <AnimalPickerModal
+      <AnimalMultiPickerModal
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
-        onSelect={handleAddAnimal}
+        onConfirm={handleAddAnimals}
+        initialSelected={animals.map((a) => a.code)}
       />
     </View>
   );

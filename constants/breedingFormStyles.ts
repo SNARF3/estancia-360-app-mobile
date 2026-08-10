@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
+import { BorderRadius, Colors, Shadows, Spacing, Typography } from './theme';
 
 /**
  * Shared styles for all breeding form screens.

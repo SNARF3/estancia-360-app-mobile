@@ -242,6 +242,27 @@ export function IncidentIcon({ color = 'white', size = 56 }: IconProps) {
   return <SvgXml xml={xml} width={size} height={size} />;
 }
 
+const diagnosisIconSvg = `<svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="14" y="10" width="28" height="38" rx="5" fill="white" fill-opacity="0.12" stroke="white" stroke-width="2.1875" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="21" y="6" width="14" height="8" rx="3" fill="white" fill-opacity="0.2" stroke="white" stroke-width="2.1875" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 29L25 34L36 22" stroke="white" stroke-width="2.625" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+
+export function DiagnosisIcon({ color = 'white', size = 56 }: IconProps) {
+  const xml = applyColor(diagnosisIconSvg, color);
+  return <SvgXml xml={xml} width={size} height={size} />;
+}
+
+const birthIconSvg = `<svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M28 41C28 41 12 30.5 12 19.5C12 13.5 16.5 9.5 21.5 9.5C24.5 9.5 27 11.5 28 14.5C29 11.5 31.5 9.5 34.5 9.5C39.5 9.5 44 13.5 44 19.5C44 30.5 28 41 28 41Z" fill="white" fill-opacity="0.18" stroke="white" stroke-width="2.1875" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42.5 6L44 10.5L48.5 12L44 13.5L42.5 18L41 13.5L36.5 12L41 10.5L42.5 6Z" fill="white" fill-opacity="0.6"/>
+</svg>`;
+
+export function BirthIcon({ color = 'white', size = 56 }: IconProps) {
+  const xml = applyColor(birthIconSvg, color);
+  return <SvgXml xml={xml} width={size} height={size} />;
+}
+
 const syncIconSvg = `<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
   <path d="M6.12244 13.9943C6.12244 9.91264 8.74634 7.87183 13.9941 7.87183C16.9096 7.87183 19.242 9.03801 20.9912 11.3704" stroke="white" stroke-opacity="0.75" stroke-width="1.09329" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M21.8659 13.9941C21.8659 18.0758 19.242 20.1166 13.9941 20.1166C11.0787 20.1166 8.74634 18.9504 6.99707 16.618" stroke="white" stroke-opacity="0.75" stroke-width="1.09329" stroke-linecap="round" stroke-linejoin="round"/>

@@ -2,7 +2,7 @@
 // Lista de potreros con sus lotes y opción de crear/editar
 
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
     Alert, BackHandler, FlatList,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../../constants/theme';
+import { useSafeRouter } from '../../../../../../hooks/navigation/use-SafeRouter';
 import {
     LOT_TYPE_COLORS, LOT_TYPE_LABELS, useLots, usePastures,
     type CreateLotInput, type CreatePastureInput, type LotType, type Pasture,
@@ -320,7 +321,7 @@ function PastureCard({
 
 export default function PasturesScreen() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const router = useSafeRouter();
     const { pastures, loading, error, fetchPastures, createPasture, updatePasture, deactivatePasture, deletePasture } = usePastures();
     const { createLot } = useLots();
 

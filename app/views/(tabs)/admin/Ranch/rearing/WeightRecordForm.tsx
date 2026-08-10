@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { DateSelector } from '../../../../../../components/common/DateSelector';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 import { AnimalPickerModal } from '../../../../../../components/common/AnimalPickerModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing } from '../../../../../../constants/theme';
@@ -31,8 +31,13 @@ export default function WeightRecordForm() {
   const { animalCode: paramCode, from } = useLocalSearchParams<{ animalCode?: string; from?: string }>();
   const { formData, updateField, saveRecord, resetForm, loading, error, success } = useWeightRecord();
 
+  const isFirstParamSync = useRef(true);
   useEffect(() => {
-    if (paramCode) updateField('animalCode', paramCode.toUpperCase());
+    if (paramCode) {
+      if (!isFirstParamSync.current) resetForm();
+      updateField('animalCode', paramCode.toUpperCase());
+    }
+    isFirstParamSync.current = false;
   }, [paramCode]);
 
   const handleBack = () => {

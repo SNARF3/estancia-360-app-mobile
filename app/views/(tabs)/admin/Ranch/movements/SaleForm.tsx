@@ -7,7 +7,7 @@ import { AnimalMultiPickerModal } from '../../../../../../components/common/Anim
 import { DateSelector } from '../../../../../../components/common/DateSelector';
 import { Colors } from '../../../../../../constants/theme';
 import { useAnimalSale } from '../../../../../../hooks/movements/use-AnimalSale';
-import { breedingFormStyles as styles } from '../breeding/breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 export default function SaleForm() {
     const insets = useSafeAreaInsets();

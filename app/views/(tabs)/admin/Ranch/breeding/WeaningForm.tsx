@@ -2,7 +2,7 @@
 
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert, KeyboardAvoidingView,
     Platform, ScrollView, Text, TextInput,
@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useWeaning } from '../../../../../../hooks/breeding/use-Weaning';
 import { type Lot } from '../../../../../../hooks/Ranch/use-Pastures';
-import { breedingFormStyles as styles } from './breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 export default function WeaningForm() {
     const insets = useSafeAreaInsets();
@@ -27,8 +27,13 @@ export default function WeaningForm() {
     const [showLotSelector, setShowLotSelector] = useState(false);
     const [selectedLotName, setSelectedLotName] = useState('');
 
+    const isFirstParamSync = useRef(true);
     useEffect(() => {
-        if (params.criaCode) updateField('criaCode', params.criaCode);
+        if (params.criaCode) {
+            if (!isFirstParamSync.current) { resetForm(); setSelectedLotName(''); }
+            updateField('criaCode', params.criaCode);
+        }
+        isFirstParamSync.current = false;
     }, [params.criaCode]);
 
     const handleBack = () => {

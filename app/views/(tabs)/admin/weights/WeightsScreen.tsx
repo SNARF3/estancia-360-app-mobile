@@ -10,9 +10,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer } from '../../../../../components/layout/ScreenContainer';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
 import { getSession } from '../../../../../hooks/auth/use-Auth';
+import { PRODUCTIVE_STATUSES } from '../../../../../hooks/db.sqlite/database';
 import { getDb } from '../../../../../hooks/db.sqlite/db-pool';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -40,6 +42,7 @@ interface LotWeightRow {
 
 export default function WeightsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [animals, setAnimals] = useState<AnimalWeightRow[]>([]);
   const [lots, setLots] = useState<LotWeightRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +55,7 @@ export default function WeightsScreen() {
       if (!session) { setLoading(false); return; }
       const db = await getDb();
 
-      // Animales en recría (2) o engorde (3) con último pesaje
+      // Animales con al menos un pesaje registrado (sin importar su estado productivo actual)
       const animalRows = await db.getAllAsync<AnimalWeightRow>(
         `SELECT
           a.id,
@@ -63,7 +66,7 @@ export default function WeightsScreen() {
           wr.weight              AS last_weight,
           wr.created_at          AS last_weight_date
         FROM ranch_animals a
-        LEFT JOIN (
+        JOIN (
           SELECT wr2.weight, wr2.created_at, ae.id_ranch_animal
           FROM weight_records wr2
           JOIN animal_events ae ON ae.id = wr2.id_event
@@ -75,15 +78,14 @@ export default function WeightsScreen() {
           )
         ) wr ON wr.id_ranch_animal = a.id
         WHERE a.id_ranch = ?
-          AND a.id_productive_status IN (2, 3)
           AND a.id_status = 1
-        ORDER BY a.code ASC
+        ORDER BY wr.created_at DESC
         LIMIT 100`,
         [session.id_ranch]
       );
       setAnimals(animalRows);
 
-      // Resumen por lote — usa último weight_record si existe, sino peso inicial del animal
+      // Resumen por lote — cualquier lote con animales que tengan pesajes (o peso inicial de alta)
       const lotRows = await db.getAllAsync<LotWeightRow>(
         `SELECT
           rl.name         AS lot_name,
@@ -111,12 +113,11 @@ export default function WeightsScreen() {
         FROM ranch_lots rl
         JOIN ranch_pastures rp ON rp.id = rl.id_ranch_pasture
         LEFT JOIN ranch_animals a ON a.id_lot = rl.id
-          AND a.id_productive_status IN (2, 3)
           AND a.id_status = 1
         WHERE rl.id_ranch = ?
-          AND rl.lot_type IN ('recria', 'engorde')
           AND rl.is_active = 1
         GROUP BY rl.id
+        HAVING animal_count > 0
         ORDER BY rl.lot_type, rl.name`,
         [session.id_ranch]
       );
@@ -130,23 +131,60 @@ export default function WeightsScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, []));
 
-  const statusLabel = (s: number) => s === 2 ? 'Recría' : 'Engorde';
-  const statusColor = (s: number) => s === 2 ? '#3B82F6' : '#F59E0B';
+  const STATUS_LABELS: Record<number, string> = {
+    [PRODUCTIVE_STATUSES.CRIA]: 'Cría',
+    [PRODUCTIVE_STATUSES.RECRIA]: 'Recría',
+    [PRODUCTIVE_STATUSES.ENGORDE]: 'Engorde',
+    [PRODUCTIVE_STATUSES.BAJA]: 'Baja',
+  };
+  const STATUS_COLORS: Record<number, string> = {
+    [PRODUCTIVE_STATUSES.CRIA]: '#8B5CF6',
+    [PRODUCTIVE_STATUSES.RECRIA]: '#3B82F6',
+    [PRODUCTIVE_STATUSES.ENGORDE]: '#F59E0B',
+    [PRODUCTIVE_STATUSES.BAJA]: '#6B7280',
+  };
+  const statusLabel = (s: number) => STATUS_LABELS[s] ?? 'Sin clasificar';
+  const statusColor = (s: number) => STATUS_COLORS[s] ?? Colors.textDisabled;
 
   const formatDate = (iso: string | null) => {
     if (!iso) return '—';
     return new Date(iso).toLocaleDateString('es', { day: '2-digit', month: 'short' });
   };
 
-  const lotTypeColor = (t: string) => t === 'recria' ? '#3B82F6' : '#F59E0B';
-  const lotTypeLabel = (t: string) => t === 'recria' ? 'Recría' : 'Engorde';
+  const LOT_TYPE_LABELS: Record<string, string> = {
+    cria: 'Cría',
+    recria: 'Recría',
+    engorde: 'Engorde',
+    reproductiva: 'Reproductiva',
+    general: 'General',
+  };
+  const LOT_TYPE_COLORS: Record<string, string> = {
+    cria: '#8B5CF6',
+    recria: '#3B82F6',
+    engorde: '#F59E0B',
+    reproductiva: '#EC4899',
+    general: '#6B7280',
+  };
+  const lotTypeColor = (t: string) => LOT_TYPE_COLORS[t] ?? Colors.textDisabled;
+  const lotTypeLabel = (t: string) => LOT_TYPE_LABELS[t] ?? t;
 
   return (
-    <ScreenContainer scrollable={false} style={styles.container}>
+    <ScreenContainer scrollable={false} style={[styles.container, { paddingTop: insets.top + 12 }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Pesos</Text>
-        <Text style={styles.subtitle}>Recría y Engorde</Text>
+        {router.canGoBack() && (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
+          </TouchableOpacity>
+        )}
+        <View>
+          <Text style={styles.title}>Pesos</Text>
+          <Text style={styles.subtitle}>Todos los animales</Text>
+        </View>
       </View>
 
       {/* Tabs internas */}
@@ -177,7 +215,7 @@ export default function WeightsScreen() {
             animals.length === 0 ? (
               <View style={styles.empty}>
                 <Ionicons name="scale-outline" size={48} color={Colors.textDisabled} />
-                <Text style={styles.emptyText}>Sin animales en recría o engorde</Text>
+                <Text style={styles.emptyText}>Sin pesajes registrados</Text>
               </View>
             ) : (
               animals.map((a) => (
@@ -205,7 +243,7 @@ export default function WeightsScreen() {
             lots.length === 0 ? (
               <View style={styles.empty}>
                 <Ionicons name="albums-outline" size={48} color={Colors.textDisabled} />
-                <Text style={styles.emptyText}>Sin lotes de recría o engorde</Text>
+                <Text style={styles.emptyText}>Sin lotes con animales</Text>
               </View>
             ) : (
               lots.map((lot, i) => (
@@ -247,13 +285,21 @@ function LotStat({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: 60,
     flex: 1,
     backgroundColor: Colors.background,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
     marginBottom: Spacing.lg,
     marginTop: Spacing.sm,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: Typography.fontPrimary,

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../constants/theme';
+import { CowIcon } from '../icons/AppIcons';
 import { Animal, useGetListAnimals } from '../../hooks/Animals/offline/use-GetListAnimals';
 
 interface AnimalPickerModalProps {
@@ -49,7 +50,7 @@ export function AnimalPickerModal({ visible, onClose, onSelect }: AnimalPickerMo
                 onClose();
             }}
         >
-            <Ionicons name="paw-outline" size={20} color={Colors.primary} />
+            <CowIcon size={22} color={Colors.primary} />
             <Text style={styles.itemText}>{item.code}</Text>
         </TouchableOpacity>
     );

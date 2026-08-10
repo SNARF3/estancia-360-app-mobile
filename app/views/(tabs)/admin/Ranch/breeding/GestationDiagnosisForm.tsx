@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -21,7 +21,7 @@ import {
     DIAGNOSIS_RESULT_LABELS,
 } from '../../../../../../hooks/breeding/breeding.types';
 import { useGestationDiagnosis } from '../../../../../../hooks/breeding/use-GestationDiagnosis';
-import { breedingFormStyles as styles } from './breedingFormStyles';
+import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
 
 export default function GestationDiagnosisForm() {
     const insets = useSafeAreaInsets();
@@ -38,10 +38,13 @@ export default function GestationDiagnosisForm() {
         success,
     } = useGestationDiagnosis();
 
+    const isFirstParamSync = useRef(true);
     useEffect(() => {
         if (params.animalCode) {
+            if (!isFirstParamSync.current) resetForm();
             updateField('animalCode', params.animalCode);
         }
+        isFirstParamSync.current = false;
     }, [params.animalCode]);
 
     const handleBack = () => {

@@ -1,10 +1,10 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View, ViewStyle } from 'react-native';
+import { ScrollView, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { Colors, Spacing } from '../../constants/theme';
 
 interface ScreenContainerProps {
     children: React.ReactNode;
-    style?: ViewStyle;
+    style?: StyleProp<ViewStyle>;
     scrollable?: boolean;
 }
 

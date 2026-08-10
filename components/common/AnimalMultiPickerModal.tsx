@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, Spacing, Typography } from '../../constants/theme';
+import { CowIcon } from '../icons/AppIcons';
 import { Animal, useGetListAnimals } from '../../hooks/Animals/offline/use-GetListAnimals';
 
 interface AnimalMultiPickerModalProps {
@@ -71,12 +72,14 @@ export function AnimalMultiPickerModal({ visible, onClose, onConfirm, initialSel
         const isSelected = selected.has(item.id);
         return (
             <TouchableOpacity style={styles.item} onPress={() => toggle(item)} activeOpacity={0.7}>
+                <CowIcon size={22} color={isSelected ? Colors.primary : Colors.textDisabled} />
+                <Text style={styles.itemText}>{item.code}</Text>
                 <Ionicons
                     name={isSelected ? 'checkbox' : 'square-outline'}
                     size={22}
                     color={isSelected ? Colors.primary : Colors.textDisabled}
+                    style={{ marginLeft: 'auto' }}
                 />
-                <Text style={styles.itemText}>{item.code}</Text>
             </TouchableOpacity>
         );
     };
