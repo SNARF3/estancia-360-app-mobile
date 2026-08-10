@@ -129,6 +129,7 @@ app/views/
                          independientes, no un formulario unificado, ver nota en "Menú principal")
         movements/    ← Movimientos (MovimientosMenu, Purchase/Sale/Transfer/RanchExitForm,
                          AnimalExitForm, PendingSalesScreen)
+        feeding/      ← Alimentación (FeedRecordForm — un solo formulario, por lote, ver nota abajo)
       Registros/      ← RegistrosMenu (accesos a cargas masivas por módulo)
       bulkImport/     ← Wizards de importación Excel (uno por módulo, ver sección propia)
       sync/           ← SyncScreen (upload + download + resolución de conflictos)
@@ -274,8 +275,8 @@ módulo). Auth tiene sus propios back buttons explícitos, ver sección Auth.
 ### BottomTabBar — ocultar barra
 
 Se oculta cuando el `pathname` contiene: `/admin/Ranch/Animals`, `/admin/Ranch/breeding`,
-`/admin/Ranch/rearing`, `/admin/Ranch/fattening`, `/admin/Ranch/health`, `/admin/Ranch/movements`,
-`/admin/Ranch/Pastures`.
+`/admin/Ranch/rearing`, `/admin/Ranch/fattening`, `/admin/Ranch/health`, `/admin/Ranch/feeding`,
+`/admin/Ranch/movements`, `/admin/Ranch/Pastures`.
 
 ### Animaciones de transición
 
@@ -365,6 +366,62 @@ forma de evolucionar el schema de un dispositivo con datos ya cargados. Ahora:
   (tabla muerta).
 - Si agregás una tabla o columna nueva al schema local, **agregá una migración nueva acá**, no
   edites el DDL baseline directamente (eso solo cubre instalaciones limpias).
+
+**Bug real, investigado 2026-08-09 — "no such table: main.animal_events_old" al guardar un pesaje**:
+la migración v2 (rename→recreate→copy→drop de `animal_events`/`feed_records` para volver `id_user`
+nullable) solo chequeaba `columnIsNotNull(tabla, 'id_user')` para decidir si ya había corrido. Si un
+dispositivo llegó a cortarse a mitad de esa migración ANTES de que existiera este chequeo (ej. app
+recargada en medio de la corrida), quedaba en un estado a medias — típicamente `animal_events`
+inexistente y `animal_events_old` viva con el schema viejo. En ese estado, `PRAGMA
+table_info(animal_events)` devuelve 0 filas, el guard lee "no NOT NULL" (falso por default) como
+"ya migrado" y saltea la migración PARA SIEMPRE — el dispositivo queda sin `animal_events` de forma
+permanente, y cualquier escritura futura (ej. un pesaje) revienta. Pasó en un celular físico (Expo
+Go) distinto al simulador donde se había verificado el fix anterior — cada dispositivo tiene su
+propio archivo SQLite local, así que un fix idempotente-pero-basado-en-una-sola-columna no cubría
+todos los estados posibles en los que un dispositivo ya roto podía haber quedado.
+
+Primer fix (necesario pero INSUFICIENTE, dejado igual): `finishNullableIdUserMigration()` en
+`migrations.ts` reemplaza el chequeo de una sola columna por un chequeo de existencia real de AMBAS
+tablas (`tabla` y `tabla_old`) y resume la migración desde cualquier punto a medias — incluye
+`INSERT OR IGNORE` para tolerar que la copia ya se haya hecho antes de un corte previo. Además se
+agregaron logs (`[migrations] v2 ...`, `[db-pool] getDb: ...`, `[events] createEvent falló...`) y un
+`console.error` real en `use-WeightRecord.ts` (antes el catch de `saveRecord` solo seteaba el
+mensaje en la UI, nunca lo mandaba a consola — por eso no aparecía nada en la terminal de Metro pese
+a que el error sí se mostraba en pantalla).
+
+**Causa raíz REAL, encontrada con logs en vivo probando en el simulador (2026-08-09, mismo día)**:
+el fix de arriba no alcanzó — el error seguía saliendo igual, y los logs mostraron que ni siquiera
+pasaba por `runMigrations` (`[db-pool] getDb: devolviendo instancia cacheada`, migraciones ya habían
+corrido bien antes en esa sesión). El problema real es un efecto colateral de SQLite, no de la
+lógica de idempotencia: `ALTER TABLE animal_events RENAME TO animal_events_old` (el primer paso de
+la migración v2) no solo renombra esa tabla — SQLite además **reescribe automáticamente el texto de
+FOREIGN KEY de CUALQUIER OTRA tabla que referencie `animal_events`** para que pase a decir
+`animal_events_old` (así la referencia sigue "válida" apuntando adonde sea que esa tabla vive
+ahora). La migración v2 después crea una `animal_events` nueva (vacía) y borra `animal_events_old`
+— pero el texto de FK ya reescrito en las **11 tablas que referencian `animal_events(id)`**
+(`weight_records`, `breeding_services`, `gestation_diagnoses`, `parturitions`, `weanings`,
+`rearing_selections`, `fattening_entries`, `animal_exits`, `vaccinations`, `treatments`,
+`health_incidents`) queda para siempre apuntando a un nombre que ya no existe. Con
+`PRAGMA foreign_keys = ON` (activo en esta app), cualquier INSERT/UPDATE futuro a esas 11 tablas
+dispara la validación de FK, que intenta resolver `animal_events_old` y revienta con "no such
+table" — pasa en **todo dispositivo que haya corrido la migración v2 alguna vez**, corra limpia o a
+medias; no tiene nada que ver con idempotencia. Explica por qué el guardado del `animal_event` en sí
+(`createEvent`, instrumentado con try/catch) nunca tiraba el error — el INSERT que realmente falla
+es el siguiente, a la tabla de detalle (`weight_records` en el caso de un pesaje).
+
+Fix real: **migración v4**, `fixDanglingEventFk()` en `migrations.ts`. Reconstruye cada una de las
+11 tablas bajo un nombre TEMPORAL primero (nunca "animal_events", que es el nombre que SQLite
+reescribe en cascada), copia los datos (`INSERT OR IGNORE`, resumible), borra la tabla vieja
+corrupta, y recién ahí renombra la temporal al nombre final — como nada referencia el nombre
+temporal, ese renombrado no dispara ninguna reescritura en cascada y el FK queda apuntando
+correctamente a `animal_events` para siempre. **No agrega ninguna tabla ni columna nueva** al schema
+— mismas 11 tablas, mismas columnas de siempre, solo se corrige el texto de FK interno que SQLite
+había corrompido. Detecta si ya está corrupta mirando `sqlite_master.sql` directo (busca el string
+`animal_events_old` en la definición); si no lo encuentra, no-op.
+
+Confirmado en vivo en el celular de Jaime (2026-08-09): con los logs de la v2 y v4 corriendo, el
+guardado de un pesaje pasó por `weight_records` — la tabla exacta que este fix repara. Pendiente:
+que Jaime reintente el pesaje con la migración v4 aplicada y confirme que ya no explota.
 
 ---
 
@@ -515,7 +572,8 @@ correspondiente en `BULK_ITEMS`).
 | Animales | ✅ | Management → Mis Animales | AnimalMenu, AddAnimal, DetailAnimal |
 | Cría | ✅ | Registros → Reproducción/Partos (popup) | BreedingServiceForm, GestationDiagnosisForm, ParturitionForm, WeaningForm + hooks |
 | Recría | ✅ | Registros → Pesajes | WeightRecordForm |
-| Engorde | ❌ Eliminado 2026-08-09 | — | Todo el módulo (`FatteningMenu`, `FatteningEntryForm`, `FeedRecordForm`) era código muerto sin ningún punto de entrada real — borrado en la limpieza, ver nota en "Menú principal" |
+| Engorde | ❌ Eliminado 2026-08-09 | — | Todo el módulo viejo (`FatteningMenu`, `FatteningEntryForm`, `FeedRecordForm` original) era código muerto sin ningún punto de entrada real — borrado en la limpieza, ver nota en "Menú principal". `fattening_entries` (entrada al sistema de engorde, ps 2→3) sigue sin UI móvil — no confundir con Alimentación de abajo, son tablas distintas |
+| Alimentación | ✅ (reconstruido 2026-08-09, sin test interactivo) | Registros → Alimentación (tile directo, sin popup) | `Ranch/feeding/FeedRecordForm.tsx` + `hooks/feeding/use-FeedRecord.ts` + `registerFeedRecord` en `repositories/events.ts`. **Solo por lote** — `feed_records` (local y backend) no tiene `id_ranch_animal` en ningún lado; el backend documenta explícitamente que es el único tipo de registro del sistema que NO genera `animal_event`. Se evaluó agregar una opción "individual" y se descartó (confirmado con Jaime) porque requeriría tocar el schema del backend — fuera de alcance de esta sesión. `registerFeedRecord` por eso NO pasa por `createEvent`, a diferencia de todos los demás módulos. Sync ya estaba resuelto de antes (`ENGORDE_CONFIG`/`FK_RESOLUTION.feed_records`/`FIELD_EXCLUDE.feed_records` en `sync.ts`) — no se tocó `sync.ts`. **Visibilidad del historial** (agregado el mismo día, a pedido explícito): `hooks/feeding/use-LotFeedHistory.ts` (nuevo hook compartido, consulta `feed_records WHERE id_lot = ?`) se usa en DOS lugares — `LotDetail.tsx` (historial propio del lote) y la pestaña "Alim." de `DetailAnimal.tsx` (historial del lote ACTUAL del animal, no un registro propio del animal — se le agregó `id_lot` a `AnimalCurrentLot`/`getAnimalCurrentLot` en `repositories/animals.ts` para poder resolverlo). Dejar claro en la UI que es el historial del lote, no del animal individual, para no generar la falsa expectativa de que existe alimentación por animal |
 | Sanidad | ✅ | Registros → Sanidad (popup) | VaccinationForm, TreatmentForm, HealthIncidentForm + hooks |
 | Movimientos | ✅ (recién rediseñado, sin test interactivo) | `Ranch/movements/MovimientosMenu` | ver sección propia arriba |
 | Potreros | ✅ | Management → Potreros | PasturesMenu, LotDetail, use-Pastures |
@@ -599,3 +657,13 @@ tienen la URL correcta cada uno).
    Falta el test interactivo con la plantilla real.
 5. Revertir `.env` a la URL de producción antes de cualquier build/test que no sea contra el backend
    local de esta máquina.
+6. **Confirmar que el bug de "no such table: main.animal_events_old" al guardar un pesaje quedó
+   resuelto de una vez por todas** — ver sección Migraciones de schema local arriba. Causa raíz real
+   encontrada 2026-08-09 (no era idempotencia, era `ALTER TABLE RENAME` de la v2 corrompiendo el FK
+   de las 11 tablas que referencian `animal_events`) y arreglada con la migración v4
+   (`fixDanglingEventFk`). Pendiente: que Jaime reintente el pesaje con este fix aplicado y confirme
+   en la terminal de Metro que ya no explota (buscar logs `[migrations] v4 ...`).
+7. **Testear interactivamente el módulo Alimentación** (recién reconstruido 2026-08-09, ver sección
+   Módulos implementados) — nunca se probó en simulador/dispositivo real: Registros → Alimentación
+   → elegir lote → guardar → confirmar que aparece como pendiente en `SyncScreen` y que sincroniza
+   sin error 400 contra `/sync/engorde`.

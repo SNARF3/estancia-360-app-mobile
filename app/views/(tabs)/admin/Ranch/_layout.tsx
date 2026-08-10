@@ -14,6 +14,7 @@ export default function RanchLayout() {
             <Stack.Screen name="health/VaccinationForm" />
             <Stack.Screen name="health/TreatmentForm" />
             <Stack.Screen name="health/HealthIncidentForm" />
+            <Stack.Screen name="feeding/FeedRecordForm" />
             <Stack.Screen name="Pastures/PasturesMenu" />
             <Stack.Screen name="Pastures/LotDetail" />
             <Stack.Screen name="movements/MovimientosMenu" />

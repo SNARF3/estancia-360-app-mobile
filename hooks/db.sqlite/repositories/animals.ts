@@ -147,6 +147,26 @@ export async function getAnimalByCode(id_ranch: string, code: string): Promise<A
     );
 }
 
+export interface AnimalCurrentLot {
+    id_lot: string;
+    lot_name: string;
+    lot_type: string | null;
+    pasture_name: string;
+}
+
+/** Lote + potrero actuales de un animal puntual (null si no tiene lote asignado) */
+export async function getAnimalCurrentLot(id: string): Promise<AnimalCurrentLot | null> {
+    const db = await getDb();
+    return db.getFirstAsync<AnimalCurrentLot>(
+        `SELECT rl.id AS id_lot, rl.name AS lot_name, rl.lot_type, rp.name AS pasture_name
+         FROM ranch_animals a
+         JOIN ranch_lots rl ON rl.id = a.id_lot
+         JOIN ranch_pastures rp ON rp.id = rl.id_ranch_pasture
+         WHERE a.id = ?`,
+        [id]
+    );
+}
+
 /** Actualiza estado productivo y lote (transición de ciclo) */
 export async function updateAnimalProductiveStatus(
     id: string,

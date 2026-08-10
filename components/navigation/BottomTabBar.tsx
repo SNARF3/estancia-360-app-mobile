@@ -105,6 +105,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
     pathname.includes('/admin/Ranch/rearing') ||
     pathname.includes('/admin/Ranch/fattening') ||
     pathname.includes('/admin/Ranch/health') ||
+    pathname.includes('/admin/Ranch/feeding') ||
     pathname.includes('/admin/Ranch/Pastures') ||
     pathname.includes('/admin/Ranch/movements') ||
     pathname.includes('/admin/bulkImport') ||

@@ -13,6 +13,7 @@ import {
     CowIcon,
     DiagnosisIcon,
     DnaIcon,
+    FeedIcon,
     HealthIcon,
     IncidentIcon,
     MovementsIcon,
@@ -65,6 +66,11 @@ const GRID_TILES: GridTile[] = [
         label: 'Movimientos',
         Icon: MovementsIcon,
         onPress: (r) => r.push('/views/(tabs)/admin/Ranch/movements/MovimientosMenu?from=registros' as any),
+    },
+    {
+        label: 'Alimentación',
+        Icon: FeedIcon,
+        onPress: (r) => r.push('/views/(tabs)/admin/Ranch/feeding/FeedRecordForm?from=registros' as any),
     },
 ];
 
