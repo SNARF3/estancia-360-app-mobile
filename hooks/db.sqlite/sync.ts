@@ -215,9 +215,36 @@ async function apiFetch(endpoint: string, body: object): Promise<BatchResponse> 
     if (!res.ok) {
         const text = await res.text();
         console.error('[sync] response error:', text);
-        throw new Error(`HTTP ${res.status}: ${text}`);
+        // Intentar parsear el body como JSON para poder extraer `error`/`message`
+        // estructurados después (ej. SUBSCRIPTION_CAPACITY_EXCEEDED) — si no es
+        // JSON (network error genérico, HTML de un proxy, etc.) cae al mensaje crudo.
+        let structured: { error?: string; message?: string } | null = null;
+        try { structured = JSON.parse(text); } catch { /* no era JSON */ }
+        throw new Error(
+            structured
+                ? JSON.stringify({ status: res.status, ...structured })
+                : `HTTP ${res.status}: ${text}`
+        );
     }
     return res.json() as Promise<BatchResponse>;
+}
+
+/**
+ * Convierte el error crudo de apiFetch() en un mensaje legible — si viene el
+ * cuerpo estructurado (ver arriba), busca casos conocidos como
+ * SUBSCRIPTION_CAPACITY_EXCEEDED para dar un mensaje claro en español; si no,
+ * devuelve el texto crudo tal cual (ej. errores de red, que no tienen ese shape).
+ */
+function extractSyncErrorMessage(err: unknown): string {
+    const raw = err instanceof Error ? err.message : String(err);
+    try {
+        const parsed = JSON.parse(raw) as { status?: number; error?: string; message?: string };
+        if (parsed.error === 'SUBSCRIPTION_CAPACITY_EXCEEDED') {
+            return 'Se alcanzó el límite de animales de tu plan actual. Contactá a Estancia360 para ampliar tu plan.';
+        }
+        if (parsed.message) return parsed.message;
+    } catch { /* no era el JSON estructurado, seguimos con el texto crudo */ }
+    return raw;
 }
 
 // ─── Mapa de server_ids ya conocidos ─────────────────────────────────────────
@@ -854,30 +881,29 @@ export async function syncAll(
         onProgress?.('Verificando datos locales...', 5);
         const serverIdMap = await buildServerIdMap();
 
-        const criaResult = await syncCria(serverIdMap, onProgress);
-        console.log('[sync] cría:', criaResult.synced, 'synced,', criaResult.errors.length, 'errors');
-        totalSynced += criaResult.synced;
-        allErrors.push(...criaResult.errors);
+        // Cada módulo corre aislado — si uno falla (ej. un animal rechazado por
+        // SUBSCRIPTION_CAPACITY_EXCEEDED tira un HTTP 400 en /sync/cria), los demás
+        // igual sincronizan. Antes, un solo error acá abortaba TODO el resto del
+        // ciclo (recría/engorde/sanidad/movimientos ni se intentaban).
+        const modules: Array<[string, () => Promise<{ synced: number; errors: SyncError[] }>]> = [
+            ['cria', () => syncCria(serverIdMap, onProgress)],
+            ['recria', () => syncRecria(serverIdMap, onProgress)],
+            ['engorde', () => syncEngorde(serverIdMap, onProgress)],
+            ['sanidad', () => syncSanidad(serverIdMap, onProgress)],
+            ['movimientos', () => syncMovimientos(serverIdMap, onProgress)],
+        ];
 
-        const recriaResult = await syncRecria(serverIdMap, onProgress);
-        console.log('[sync] recría:', recriaResult.synced, 'synced,', recriaResult.errors.length, 'errors');
-        totalSynced += recriaResult.synced;
-        allErrors.push(...recriaResult.errors);
-
-        const engordeResult = await syncEngorde(serverIdMap, onProgress);
-        console.log('[sync] engorde:', engordeResult.synced, 'synced,', engordeResult.errors.length, 'errors');
-        totalSynced += engordeResult.synced;
-        allErrors.push(...engordeResult.errors);
-
-        const sanidadResult = await syncSanidad(serverIdMap, onProgress);
-        console.log('[sync] sanidad:', sanidadResult.synced, 'synced,', sanidadResult.errors.length, 'errors');
-        totalSynced += sanidadResult.synced;
-        allErrors.push(...sanidadResult.errors);
-
-        const movimientosResult = await syncMovimientos(serverIdMap, onProgress);
-        console.log('[sync] movimientos:', movimientosResult.synced, 'synced,', movimientosResult.errors.length, 'errors');
-        totalSynced += movimientosResult.synced;
-        allErrors.push(...movimientosResult.errors);
+        for (const [name, run] of modules) {
+            try {
+                const result = await run();
+                console.log(`[sync] ${name}:`, result.synced, 'synced,', result.errors.length, 'errors');
+                totalSynced += result.synced;
+                allErrors.push(...result.errors);
+            } catch (err) {
+                console.error(`[sync] ${name} falló, se sigue con el resto:`, err);
+                allErrors.push({ table: name, id: '', error: extractSyncErrorMessage(err) });
+            }
+        }
 
         onProgress?.('Finalizando...', 99);
         if (allErrors.length === 0) {
@@ -891,9 +917,7 @@ export async function syncAll(
         allErrors.push({
             table: noInternet ? 'network' : 'sync',
             id: '',
-            error: noInternet
-                ? 'Sin conexión a internet'
-                : (err instanceof Error ? err.message : String(err)),
+            error: noInternet ? 'Sin conexión a internet' : extractSyncErrorMessage(err),
         });
     }
 

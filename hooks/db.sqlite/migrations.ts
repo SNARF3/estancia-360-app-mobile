@@ -487,34 +487,57 @@ export async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
   const currentVersion = row?.user_version ?? 0;
 
   const pending = MIGRATIONS.filter((m) => m.version > currentVersion).sort((a, b) => a.version - b.version);
+  if (pending.length === 0) return;
 
-  for (const migration of pending) {
-    try {
-      await db.withTransactionAsync(async () => {
-        await migration.up(db);
-      });
-      await db.execAsync(`PRAGMA user_version = ${migration.version}`);
-    } catch (err) {
-      // Diagnóstico 2026-08-10: un error acá era casi imposible de investigar en
-      // dispositivos a los que no tenemos acceso directo al archivo SQLite (ver
-      // caso real: mismo error en simulador vs. celular físico vía Expo Go, cada
-      // uno con su propia base local). Adjuntar el estado real del schema en el
-      // momento exacto del fallo — antes de que la transacción se pierda — para
-      // que el próximo error traiga la evidencia puesta en vez de tener que
-      // reproducirlo con acceso al dispositivo.
-      let diagnostics = 'no se pudo recolectar diagnóstico adicional';
+  // Bug real encontrado 2026-08-17 (Android físico, "FOREIGN KEY constraint failed" en v2):
+  // varias migraciones (v2, v4) reconstruyen tablas referenciadas por FK desde otras
+  // tablas (RENAME/CREATE/INSERT/DROP) — SQLite documenta que este tipo de cirugía de
+  // schema requiere `PRAGMA foreign_keys=OFF` primero (ver "Making Other Kinds Of Table
+  // Schema Changes" en la doc de SQLite). No lo hacíamos: `foreign_keys=ON` se setea una
+  // sola vez al abrir la DB (database.ts) y quedaba activo durante toda la migración —
+  // en iOS no explotó, en este Android sí. El toggle va ACÁ, fuera de los
+  // `withTransactionAsync` de cada migración individual, porque `PRAGMA foreign_keys` es
+  // no-op si se cambia dentro de una transacción activa (documentado por SQLite).
+  await db.execAsync('PRAGMA foreign_keys = OFF;');
+  try {
+    for (const migration of pending) {
       try {
-        const tables = await db.getAllAsync<{ name: string }>(
-          `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`
-        );
-        diagnostics = `tablas actuales (${tables.length}): ${tables.map((t) => t.name).join(', ')}`;
-      } catch { /* si esto también falla, seguimos con el mensaje genérico */ }
+        await db.withTransactionAsync(async () => {
+          await migration.up(db);
+        });
+        await db.execAsync(`PRAGMA user_version = ${migration.version}`);
+      } catch (err) {
+        // Diagnóstico 2026-08-10: un error acá era casi imposible de investigar en
+        // dispositivos a los que no tenemos acceso directo al archivo SQLite (ver
+        // caso real: mismo error en simulador vs. celular físico vía Expo Go, cada
+        // uno con su propia base local). Adjuntar el estado real del schema en el
+        // momento exacto del fallo — antes de que la transacción se pierda — para
+        // que el próximo error traiga la evidencia puesta en vez de tener que
+        // reproducirlo con acceso al dispositivo.
+        let diagnostics = 'no se pudo recolectar diagnóstico adicional';
+        try {
+          const tables = await db.getAllAsync<{ name: string }>(
+            `SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`
+          );
+          diagnostics = `tablas actuales (${tables.length}): ${tables.map((t) => t.name).join(', ')}`;
+        } catch { /* si esto también falla, seguimos con el mensaje genérico */ }
 
-      const original = err instanceof Error ? err.message : String(err);
-      throw new Error(
-        `Migración v${migration.version} ("${migration.description.slice(0, 60)}...") falló ` +
-        `partiendo de user_version=${currentVersion}. Error original: ${original}. ${diagnostics}`
-      );
+        const original = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Migración v${migration.version} ("${migration.description.slice(0, 60)}...") falló ` +
+          `partiendo de user_version=${currentVersion}. Error original: ${original}. ${diagnostics}`
+        );
+      }
     }
+
+    // Diagnóstico: si queda algún dato realmente huérfano (no solo texto de FK, que ya
+    // arregla la v4), que aparezca acá como warning en vez de explotar más adelante en
+    // un INSERT/UPDATE cualquiera sin ninguna pista de dónde viene.
+    const violations = await db.getAllAsync<{ table: string }>('PRAGMA foreign_key_check');
+    if (violations.length > 0) {
+      console.warn('[migrations] foreign_key_check encontró violaciones tras migrar:', violations);
+    }
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON;');
   }
 }

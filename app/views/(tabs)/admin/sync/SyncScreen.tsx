@@ -275,10 +275,21 @@ function useSyncData() {
       });
       if (result.success) {
         showMessage({ message: 'Sincronización exitosa', description: `${result.synced} registro(s) sincronizados.`, type: 'success', floating: true });
-      } else if (result.synced > 0) {
-        showMessage({ message: 'Sincronización parcial', description: `${result.synced} ok, ${result.failed} con errores.`, type: 'warning', floating: true });
       } else {
-        showMessage({ message: 'Sin conexión', description: 'Verifica tu internet e intenta de nuevo.', type: 'danger', floating: true });
+        // Antes esto asumía "Sin conexión" solo porque nada se sincronizó — pero un
+        // rechazo real (ej. límite de animales del plan superado) también puede
+        // dejar result.synced=0 sin ser un problema de red. Mostrar el motivo real.
+        const isNetworkIssue = result.errors.length > 0 && result.errors.every((e) => e.table === 'network');
+        const distinctMessages = Array.from(new Set(result.errors.map((e) => e.error))).slice(0, 2);
+        const description = isNetworkIssue
+          ? 'Verifica tu internet e intenta de nuevo.'
+          : distinctMessages.join(' — ') || `${result.failed} con errores.`;
+
+        if (result.synced > 0) {
+          showMessage({ message: 'Sincronización parcial', description: `${result.synced} ok. ${description}`, type: 'warning', floating: true });
+        } else {
+          showMessage({ message: isNetworkIssue ? 'Sin conexión' : 'No se pudo sincronizar', description, type: 'danger', floating: true });
+        }
       }
       await load();
     } catch {

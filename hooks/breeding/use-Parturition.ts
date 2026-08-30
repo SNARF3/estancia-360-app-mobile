@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { registerParturition } from '../db.sqlite/repositories/events';
+import { assertCapacityAvailable } from '../subscriptions/use-CapacityGuard';
 import {
     findActivePregnantDiagnosis,
     findAnimalByCode,
@@ -95,6 +96,17 @@ export function useParturition() {
 
             const id_user = await getActiveUserId();
             const id_ranch = await getActiveRanchId();
+
+            // Solo una cría viva da de alta un animal nuevo — matchea la regla del
+            // backend (RegisterParturitionUseCase: valida capacidad únicamente si
+            // criaStatus=alive y se está creando una cría nueva).
+            if (formData.cria_status === 'alive') {
+                const capacityCheck = await assertCapacityAvailable(id_ranch, 1);
+                if (!capacityCheck.allowed) {
+                    setError(capacityCheck.message);
+                    return false;
+                }
+            }
 
             // ── Determinar clase de la cría según sexo ────────────────────────────
             // Ternera=1, Ternero Macho Entero=2 (valores del catálogo animal_classes)
