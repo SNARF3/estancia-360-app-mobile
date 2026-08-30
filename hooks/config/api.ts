@@ -7,4 +7,4 @@
  *
  * Se resuelve desde EXPO_PUBLIC_API_URL (definido en .env o por perfil de EAS).
  */
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://estancia-360-app.onrender.com/api';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://estancia-360-app.onrender.com/api/estancia-360';

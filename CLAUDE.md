@@ -11,6 +11,74 @@ Stack: React Native + Expo Router + TypeScript | SQLite local (`expo-sqlite`) | 
 
 ---
 
+## 🧭 Notas operativas para Claude — leer antes de tocar nada (agregado 2026-08-10)
+
+Lecciones de esta sesión que no son obvias mirando solo el código — guardarlas acá para no volver
+a perder tiempo redescubriéndolas:
+
+1. **El repo backend está en `/Users/marvinmolloramirez/Estancia360/backend/estancia-360-app`, y el
+   checkout local está DESACTUALIZADO.** El branch local `test` puede estar meses atrás de
+   `origin/test` (confirmado 2026-08-10: local en `ca8bd6c` de enero, `origin/test` en `68b078b` de
+   mayo — 23 commits de diferencia). `main`/`prod` locales están todavía más atrás. **Siempre hacer
+   `git fetch origin` y mirar `origin/test`** antes de asumir qué soporta o no el backend — mirar
+   solo el checkout local puede dar una respuesta directamente incorrecta sobre DTOs/entidades/
+   endpoints reales. No hay `CLAUDE.md` en ese repo todavía; lo más cercano es
+   `docs/mobile-guide-engorde.md` (en `origin/test`).
+
+2. **Antes de construir un módulo nuevo que toque una tabla existente, revisar el DTO/entity real
+   del backend primero** (no asumir que el schema local SQLite es la fuente de verdad — puede estar
+   desalineado, como pasó con Movimientos antes de la reescritura de 2026-08-05). Ejemplo reciente:
+   `feed_records` no tiene `id_ranch_animal` en ningún lado y el backend documenta explícitamente en
+   sus controllers que ciertos tipos de registro NO generan `animal_event` — ese tipo de detalle solo
+   se encuentra leyendo el controller/DTO real, no infiriendo del nombre de la tabla.
+
+3. **Gotcha real de SQLite, no específico de este proyecto pero costó una sesión entera encontrarlo**:
+   `ALTER TABLE x RENAME TO y` no solo renombra `x` — también reescribe el texto de
+   `FOREIGN KEY ... REFERENCES x(...)` en TODAS las demás tablas que referencian `x`, para que pasen
+   a decir `REFERENCES y(...)`. Si después se borra `y` y se crea una `x` nueva (patrón típico de
+   "rename→recreate→copy→drop" para cambiar una constraint que SQLite no permite alterar in-place),
+   esas tablas dependientes quedan con un FK apuntando a un nombre que ya no existe — y explota recién
+   en el próximo INSERT/UPDATE a esas tablas, no en la migración misma. Ver `migrations.ts` migración
+   v4 (`fixDanglingEventFk`) para el patrón correcto: reconstruir bajo un nombre TEMPORAL primero,
+   nunca reusar el nombre que otras tablas referencian, hasta el renombrado final.
+
+3b. **Segundo gotcha de SQLite relacionado, encontrado recién 2026-08-17 (no en el mismo momento
+    que el de arriba — costó otra sesión aparte)**: cualquier migración que haga
+    `RENAME`/`CREATE`/`INSERT`/`DROP` sobre una tabla referenciada por FK desde otras tablas
+    necesita `PRAGMA foreign_keys=OFF` ANTES de arrancar (doc oficial: "Making Other Kinds Of Table
+    Schema Changes") — si no, SQLite puede rechazar la operación con "FOREIGN KEY constraint
+    failed" en pleno RENAME/INSERT. Y ojo: `PRAGMA foreign_keys` es no-op si se cambia DENTRO de una
+    transacción activa, así que el toggle tiene que envolver el `withTransactionAsync` desde
+    AFUERA, nunca ir adentro del `up()` de una migración individual. Ver `runMigrations()` en
+    `migrations.ts` para el patrón ya aplicado (envuelve TODO el loop de migraciones pendientes,
+    no cada una por separado). Este bug no había aparecido en el simulador de iOS — recién se vio
+    en un Android físico, primera vez que ese código corrió ahí.
+
+4. **Si un error no aparece en la terminal de Metro, no asumir que el código no corrió** — puede ser
+   simplemente que el `catch` de esa pantalla nunca hace `console.error`, solo setea el mensaje en la
+   UI (pasó en `use-WeightRecord.ts`, ver sección Migraciones de schema local). Antes de instrumentar
+   con logs nuevos, revisar primero si los `catch` existentes están silenciados.
+
+5. **Cuando un módulo se prueba y "no pasa nada" (sin error, sin confirmación)**, sospechar primero
+   de un `handleSave` que navega hacia atrás inmediatamente después de guardar sin mostrar ningún
+   `Alert` — no necesariamente un fallo real de guardado. Pasó con `FeedRecordForm.tsx` recién creado
+   (le faltaba el mismo `Alert.alert('Registrado', ...)` que ya tienen Vacunación/Tratamiento).
+
+6. **El usuario/desarrollador es Marvin (`snarfeo@gmail.com`, GitHub `SNARF3`) — no "Jaime".** Este
+   archivo tenía muchas referencias viejas a "Jaime" como si fuera un tercero (cliente/probador)
+   distinto del desarrollador; corregido 2026-08-10 a pedido explícito de Marvin. Si en una sesión
+   futura aparece de nuevo el nombre "Jaime" en algún lado, es casi seguro un error a corregir, no un
+   dato real — Marvin es quien desarrolla Y quien prueba la app.
+
+7. **Nunca asumir el `API_PREFIX` real de un backend en Render sin verificarlo con `curl`** — los
+   dos backends deployados (producción y test) tienen prefijos DISTINTOS (`/api/estancia-360` vs
+   `/api`, ver sección Variables de entorno), y `/api/docs` (Swagger) responde 200 en ambos sin
+   importar cuál sea el prefijo real porque vive en un path hardcodeado aparte — no sirve para
+   inferir nada. Verificar siempre contra un endpoint público real de negocio (ej.
+   `/subscription-plans`, sin auth) con `curl -o /dev/null -w "%{http_code}\n" <url>`.
+
+---
+
 ## ⚠️ Estado de verificación interactiva
 
 **Confirmado 2026-08-05 en simulador de iOS (`npx expo start` → tecla `i`)**: el arranque completo
@@ -19,7 +87,7 @@ set → foreign_keys set → synchronous set → running DDL (39 statements) →
 → seed done`) y la pantalla de bienvenida renderiza correctamente (logo, textos, botones Iniciar
 Sesión/Registrarse). Esto es la primera verificación interactiva real del repo — antes de esto todo
 lo marcado como "reciente" en este archivo estaba solo compilado (`tsc --noEmit` limpio), nunca
-corrido. A partir de acá, Jaime puede seguir probando el resto del flujo (login, Movimientos
+corrido. A partir de acá, Marvin puede seguir probando el resto del flujo (login, Movimientos
 rediseñado, recuperar contraseña, etc.) directamente en el simulador.
 
 **Bug de web — confirmado que es EXCLUSIVO de la versión web, no afecta nativo**: la app se cuelga
@@ -154,8 +222,13 @@ hooks/
   breeding/ · rearing/ · health/  ← un hook de formulario por entidad
   movements/            ← use-AnimalPurchase, use-AnimalSale, use-AnimalTransfer, use-AnimalRanchExit,
                           use-AnimalExit (baja), use-PendingSales (confirmar/rechazar/cancelar venta)
+  feeding/              ← use-FeedRecord, use-LotFeedHistory (alimentación por lote)
+  subscriptions/        ← use-Subscription (lee + cachea el plan), use-CapacityGuard (bloquea alta
+                          local si el cache sugiere que se pasaría del límite — ver sección propia)
   Animals/
-    online/             ← llamadas HTTP directas (axios) — registro/alta puntual con conexión
+    online/             ← código MUERTO, cero imports en todo el repo (confirmado 2026-08-20) — el
+                          alta de animal real es 100% offline, ver offline/use-AnimalRegister.ts.
+                          No confundir con un flujo "online" real que no existe
     offline/            ← lectura/escritura SQLite local + los hooks use-BulkImport*
   Ranch/use-Pastures.ts
 
@@ -419,9 +492,37 @@ correctamente a `animal_events` para siempre. **No agrega ninguna tabla ni colum
 había corrompido. Detecta si ya está corrupta mirando `sqlite_master.sql` directo (busca el string
 `animal_events_old` en la definición); si no lo encuentra, no-op.
 
-Confirmado en vivo en el celular de Jaime (2026-08-09): con los logs de la v2 y v4 corriendo, el
+Confirmado en vivo en el celular de Marvin (2026-08-09): con los logs de la v2 y v4 corriendo, el
 guardado de un pesaje pasó por `weight_records` — la tabla exacta que este fix repara. Pendiente:
-que Jaime reintente el pesaje con la migración v4 aplicada y confirme que ya no explota.
+que Marvin reintente el pesaje con la migración v4 aplicada y confirme que ya no explota.
+
+**Tercera vuelta de este mismo bug, ahora en Android — "FOREIGN KEY constraint failed" en migración
+v2 (2026-08-17)**: un Android físico (no probado hasta ahora — todo lo anterior se validó en
+simulador de iOS) quedó bloqueado en `user_version=1` con la migración v2 fallando con "FOREIGN KEY
+constraint failed" (no "no such table" esta vez — un fallo distinto, más temprano en la secuencia).
+Causa: la migración v2 hace `RENAME`/`CREATE`/`INSERT`/`DROP` sobre `animal_events`, que es
+referenciada por FK desde las mismas 11 tablas de arriba. SQLite documenta que este tipo de cirugía
+de schema con FKs de por medio **requiere `PRAGMA foreign_keys=OFF` antes de tocar nada** ("Making
+Other Kinds Of Table Schema Changes" en la doc oficial) — acá nunca se desactivaba, quedaba `ON`
+desde que se abre la conexión (`database.ts`) durante toda la corrida de migraciones. En iOS no
+había explotado (posible diferencia de versión de SQLite empaquetada), en este Android sí. Sin
+pérdida de datos: la transacción de la migración se revirtió sola, el dispositivo quedó intacto en
+`user_version=1`.
+
+Complicación extra: `PRAGMA foreign_keys` es no-op si se cambia DENTRO de una transacción activa
+(documentado por SQLite) — como `runMigrations()` envuelve cada migración en
+`db.withTransactionAsync`, el toggle no puede ir adentro de ninguna migración individual, tiene que
+envolver el loop completo desde afuera.
+
+Fix: `runMigrations()` ahora hace `PRAGMA foreign_keys = OFF` antes de arrancar el loop de
+migraciones pendientes y `PRAGMA foreign_keys = ON` en un `finally` al terminar (cubre v2 y v4 de
+una sola vez, sin tocar el cuerpo de ninguna migración — la regla de "nunca editar una migración ya
+publicada" se respeta). Se agregó además un `PRAGMA foreign_key_check` después de migrar, con
+`console.warn` si encuentra algo — para detectar datos realmente huérfanos (no solo el texto de FK
+que ya arregla la v4) sin que revienten silenciosamente más adelante en un INSERT cualquiera.
+**Sin confirmar todavía en el Android donde se reportó** — próxima sesión: pedirle a Marvin que
+reintente abrir la app ahí y revisar los logs `[migrations] v2 ...`/`[migrations] v4 ...` en
+logcat/Metro.
 
 ---
 
@@ -517,7 +618,7 @@ Respuesta: `{ <tabla>: { "local-uuid": "server-id" }, ... }` por tabla — tras 
 ## Cargas Masivas (Excel)
 
 Wizards en `app/views/(tabs)/admin/bulkImport/`, uno por plantilla real en `cargas-masivas/` (raíz
-del proyecto, fuera de este repo — son plantillas que Jaime controla/edita, no algo que el móvil
+del proyecto, fuera de este repo — son plantillas que Marvin controla/edita, no algo que el móvil
 genera). Patrón común: parsear con `xlsx`, resolver códigos de animal/lote/raza contra catálogos
 locales, preview con remoción de filas, commit fila-por-fila (o grupo-por-grupo en Movimientos) vía
 las funciones de `repositories/events.ts`.
@@ -536,7 +637,7 @@ las funciones de `repositories/events.ts`.
 escritos contra un layout de columnas más simple/viejo que no coincide con
 `Plantilla_Carga_Masiva_Sanidad_Estancia360.xlsx` actual — el criterio para decidir qué lado
 "estaba mal" fue la hoja interna `Mapeo_Backend` de la propia plantilla, que documenta el mapeo
-esperado explícitamente; el Excel es la plantilla que controla Jaime, así que el móvil era el que
+esperado explícitamente; el Excel es la plantilla que controla Marvin, así que el móvil era el que
 tenía que ajustarse, no al revés):
 - **`BulkImportVaccinations`**: leía columnas fijas `[animalCode, fecha, vacuna, dosis, responsable,
   notas]` que no correspondían a la plantilla real (`ID_CARGA, FECHA, CODIGO_ANIMAL, LOTE_ACTUAL,
@@ -565,6 +666,68 @@ correspondiente en `BULK_ITEMS`).
 
 ---
 
+## Módulo Pagos/Suscripciones — límite de animales por plan (2026-08-20)
+
+**No es una pasarela de pago** — el cobro (QR/transferencia) se gestiona 100% por fuera del
+sistema, un admin de Estancia360 lo registra a mano desde el panel web. El móvil **solo lee** su
+propio estado (`GET /subscriptions/my-ranch/:idRanch`) y hace cumplir localmente el límite de
+animales del plan — nada de pantallas de elegir/activar plan ni de pagar, eso vive en la web. Ver
+`docs/pagos-suscripciones.md` (contexto completo) y `docs/mobile-guide-pagos.md` (en `origin/test`
+del repo backend, no existe localmente en este repo).
+
+**Por qué NO alcanzaba con "manejar el 400 en los 3 puntos de alta" como sugiere el doc del
+backend**: ese doc asume que el móvil llama esos endpoints directo, como la web. Acá no — las 3
+rutas de alta (alta directa, parto con cría viva, compra vía Movimientos) escriben **siempre**
+directo a SQLite local (offline-first real, sin excepción, `hooks/Animals/online/` es código
+muerto sin un solo import). El error de capacidad recién se conoce en el próximo `syncAll()`
+manual, no al guardar.
+
+**Piezas**:
+- `hooks/subscriptions/use-Subscription.ts` — lee `GET /subscriptions/my-ranch/:idRanch` (vía
+  `getRequest` de `db.postre-connection/db.connection.ts` — OJO, esa función no tira, devuelve
+  `{success:false, error}`), cachea en AsyncStorage (`subscription_cache_<idRanch>`, mismo patrón
+  que `use-Auth.ts`) para tener el último estado disponible sin conexión. `getEffectiveCapacity()`
+  replica la regla del backend: `expired`/`cancelled` → cae a la capacidad de Free (30) sin
+  importar el plan asignado; si no, `plan.capacityMax` (`null` = sin límite).
+- **Todo lo visual del plan vive únicamente en Perfil (`users/usuario.tsx`) — nada en
+  `Management.tsx`/"Mi Estancia"** (decisión explícita de Marvin 2026-08-20; se había puesto un
+  badge ahí también en un primer intento, se sacó). En Perfil hay dos piezas:
+  1. Barra de uso dentro de la tarjeta de estancia: "N / capacidad animales" + barra de progreso
+     (verde/warning/error según % usado), usando `countActiveAnimals()` — **a propósito NO reusa**
+     el `animalCount` que ya mostraba esa pantalla (ese filtra por `id_status = 1`, un campo
+     distinto de `id_productive_status`) porque la barra tiene que reflejar EXACTO el mismo conteo
+     que usa el guard de capacidad, si no confunde al usuario con dos números distintos.
+  2. Banner de alerta arriba de todo el scroll (`limitBanner`) cuando `planHeadcount >= planCapacity`
+     — "Alcanzaste el límite de tu plan... Actualizá tu plan o no vas a poder subir más animales."
+     Distinto de los avisos `trial`/`expired` de la barra de uso: este banner se dispara por
+     CAPACIDAD alcanzada específicamente, no por el estado de la suscripción.
+- **`hooks/subscriptions/use-CapacityGuard.ts`** (`assertCapacityAvailable`) — el guard local, se
+  llama ANTES de las 3 escrituras offline. Decisión de producto explícita: si el cache sugiere que
+  se llegaría/pasaría del límite, **bloquea hasta poder refrescar el estado real** (no es un aviso
+  blando que deja continuar) — solo en ese caso toca la red; si hay margen claro, no. Compara contra
+  `countActiveAnimals()` (nuevo en `repositories/animals.ts` — replica la regla EXACTA del backend,
+  `id_productive_status != 4`, **no** el filtro `id_status != INACTIVO` que usa `getAnimals()`, son
+  campos distintos con reglas distintas).
+- Wiring en `use-AnimalRegister.ts` (offline), `use-Parturition.ts` (solo si `cria_status==='alive'`,
+  matchea la condición del backend), `use-AnimalPurchase.ts` (todo-o-nada sobre
+  `formData.animals.length`, igual que el backend).
+
+**Bug de arquitectura preexistente que este feature iba a disparar, arreglado de paso**: en
+`syncAll()` (`hooks/db.sqlite/sync.ts`), los 5 módulos de sync corrían secuenciales dentro de un
+único `try` — un solo `HTTP 400` (exactamente lo que tira una capacidad excedida) abortaba TODO el
+resto del ciclo, dejando recría/engorde/sanidad/movimientos sin siquiera intentarse. Se reestructuró
+a un loop con try/catch por módulo (sin tocar la lógica interna de cada `syncX()`). También se
+agregó `extractSyncErrorMessage()` (parsea el body de error de `apiFetch()` si es JSON, caso
+especial para `SUBSCRIPTION_CAPACITY_EXCEEDED` con mensaje claro) y `SyncScreen.tsx` ahora arma el
+toast a partir de `result.errors` en vez de asumir siempre "Sin conexión" cuando `synced===0`
+(podía ser un rechazo real, no falta de red). **Cero cambios de schema SQLite** — nada de esto
+persiste estado nuevo, respeta la restricción explícita del doc.
+
+**Sin test interactivo todavía** — pendiente probar: alta bloqueada por cache desactualizado +
+refresh real, compra todo-o-nada, y un rechazo real de sync que no tumbe el resto del ciclo.
+
+---
+
 ## Módulos implementados
 
 | Módulo | Estado | Acceso | Archivos clave |
@@ -573,12 +736,13 @@ correspondiente en `BULK_ITEMS`).
 | Cría | ✅ | Registros → Reproducción/Partos (popup) | BreedingServiceForm, GestationDiagnosisForm, ParturitionForm, WeaningForm + hooks |
 | Recría | ✅ | Registros → Pesajes | WeightRecordForm |
 | Engorde | ❌ Eliminado 2026-08-09 | — | Todo el módulo viejo (`FatteningMenu`, `FatteningEntryForm`, `FeedRecordForm` original) era código muerto sin ningún punto de entrada real — borrado en la limpieza, ver nota en "Menú principal". `fattening_entries` (entrada al sistema de engorde, ps 2→3) sigue sin UI móvil — no confundir con Alimentación de abajo, son tablas distintas |
-| Alimentación | ✅ (reconstruido 2026-08-09, sin test interactivo) | Registros → Alimentación (tile directo, sin popup) | `Ranch/feeding/FeedRecordForm.tsx` + `hooks/feeding/use-FeedRecord.ts` + `registerFeedRecord` en `repositories/events.ts`. **Solo por lote** — `feed_records` (local y backend) no tiene `id_ranch_animal` en ningún lado; el backend documenta explícitamente que es el único tipo de registro del sistema que NO genera `animal_event`. Se evaluó agregar una opción "individual" y se descartó (confirmado con Jaime) porque requeriría tocar el schema del backend — fuera de alcance de esta sesión. `registerFeedRecord` por eso NO pasa por `createEvent`, a diferencia de todos los demás módulos. Sync ya estaba resuelto de antes (`ENGORDE_CONFIG`/`FK_RESOLUTION.feed_records`/`FIELD_EXCLUDE.feed_records` en `sync.ts`) — no se tocó `sync.ts`. **Visibilidad del historial** (agregado el mismo día, a pedido explícito): `hooks/feeding/use-LotFeedHistory.ts` (nuevo hook compartido, consulta `feed_records WHERE id_lot = ?`) se usa en DOS lugares — `LotDetail.tsx` (historial propio del lote) y la pestaña "Alim." de `DetailAnimal.tsx` (historial del lote ACTUAL del animal, no un registro propio del animal — se le agregó `id_lot` a `AnimalCurrentLot`/`getAnimalCurrentLot` en `repositories/animals.ts` para poder resolverlo). Dejar claro en la UI que es el historial del lote, no del animal individual, para no generar la falsa expectativa de que existe alimentación por animal |
+| Alimentación | ✅ (reconstruido 2026-08-09, sin test interactivo) | Registros → Alimentación (tile directo, sin popup) | `Ranch/feeding/FeedRecordForm.tsx` + `hooks/feeding/use-FeedRecord.ts` + `registerFeedRecord` en `repositories/events.ts`. **Solo por lote** — `feed_records` (local y backend) no tiene `id_ranch_animal` en ningún lado; el backend documenta explícitamente que es el único tipo de registro del sistema que NO genera `animal_event`. Se evaluó agregar una opción "individual" y se descartó (confirmado con Marvin) porque requeriría tocar el schema del backend — fuera de alcance de esta sesión. `registerFeedRecord` por eso NO pasa por `createEvent`, a diferencia de todos los demás módulos. Sync ya estaba resuelto de antes (`ENGORDE_CONFIG`/`FK_RESOLUTION.feed_records`/`FIELD_EXCLUDE.feed_records` en `sync.ts`) — no se tocó `sync.ts`. **Visibilidad del historial** (agregado el mismo día, a pedido explícito): `hooks/feeding/use-LotFeedHistory.ts` (nuevo hook compartido, consulta `feed_records WHERE id_lot = ?`) se usa en DOS lugares — `LotDetail.tsx` (historial propio del lote) y la pestaña "Alim." de `DetailAnimal.tsx` (historial del lote ACTUAL del animal, no un registro propio del animal — se le agregó `id_lot` a `AnimalCurrentLot`/`getAnimalCurrentLot` en `repositories/animals.ts` para poder resolverlo). Dejar claro en la UI que es el historial del lote, no del animal individual, para no generar la falsa expectativa de que existe alimentación por animal |
 | Sanidad | ✅ | Registros → Sanidad (popup) | VaccinationForm, TreatmentForm, HealthIncidentForm + hooks |
 | Movimientos | ✅ (recién rediseñado, sin test interactivo) | `Ranch/movements/MovimientosMenu` | ver sección propia arriba |
 | Potreros | ✅ | Management → Potreros | PasturesMenu, LotDetail, use-Pastures |
 | Cargas Masivas | ✅ (Sanidad-Vacunas desalineada, ver nota) | Management → Cargas Masivas → RegistrosMenu | ver sección propia |
 | Sincronización | ✅ | Tab bar | SyncScreen, sync.ts |
+| Pagos/Suscripciones | ✅ (recién agregado 2026-08-20, sin test interactivo) | Badge en Management, guard local en las 3 altas | ver sección propia arriba — solo lectura + límite de capacidad, sin pantallas de pago |
 | Recuperar contraseña | ✅ (recién reescrito, sin test interactivo) | Login → VerificationCodeEmail → ChangePassword | ver sección Auth |
 | Reportes | ❌ Pendiente | — | Solo vista básica en WeightsScreen |
 
@@ -631,12 +795,29 @@ el móvil — todo el chequeo usa el `idUser` que ya viaja en el JWT.
 ## Variables de entorno
 
 ```
-EXPO_PUBLIC_API_URL=<url del backend>/api
+EXPO_PUBLIC_API_URL=<url del backend>/<prefijo>
 ```
 `hooks/config/api.ts` es la única fuente — fallback hardcodeado a la URL de Render de producción si
-la env var no está seteada. Configurar en `.env` local (actualmente apuntando a localhost, ver
-advertencia al principio de este archivo) o por perfil en `eas.json` (`preview`/`production` ya
-tienen la URL correcta cada uno).
+la env var no está seteada. Configurar en `.env` local o por perfil en `eas.json`.
+
+**⚠️ Los dos backends deployados en Render usan un `API_PREFIX` DISTINTO cada uno — no asumir que
+son iguales** (encontrado y corregido 2026-08-20, verificado con `curl` directo, no adivinado):
+el prefijo real de NestJS (`app.setGlobalPrefix(cfg.apiPrefix)` en `main.ts` del backend, leído de
+la env var `API_PREFIX` de Render — no hay forma de verlo sin pegarle al backend real, `/api/docs`
+NO sirve como referencia porque el Swagger vive en un path hardcodeado aparte, `path: 'api/docs'`,
+que responde 200 sin importar cuál sea el prefijo real):
+
+| Backend | Dominio | Prefijo real | Confirmado con |
+|---|---|---|---|
+| Producción | `estancia-360-app.onrender.com` | `/api/estancia-360` | `curl .../api/subscription-plans` → 404; `curl .../api/estancia-360/subscription-plans` → 200 |
+| Test/preview | `estancia-360-app-test.onrender.com` | `/api` | `curl .../api/subscription-plans` → 200; `curl .../api/estancia-360/subscription-plans` → 404 |
+
+`.env`, el fallback de `hooks/config/api.ts` y el perfil `production` de `eas.json` ya están
+corregidos a `/api/estancia-360`. El perfil `preview` de `eas.json` queda tal cual, con solo
+`/api` — **no tocarlo para "unificar" con producción**, son prefijos genuinamente distintos en
+cada deploy. Si en algún momento el error es "todo devuelve 404" o "sync/login fallan raro", este
+es el primer lugar a revisar — verificar con `curl -o /dev/null -w "%{http_code}\n" <url>` contra
+un endpoint público real (`/subscription-plans`, sin auth) en vez de confiar en `/api/docs`.
 
 ---
 
@@ -661,9 +842,14 @@ tienen la URL correcta cada uno).
    resuelto de una vez por todas** — ver sección Migraciones de schema local arriba. Causa raíz real
    encontrada 2026-08-09 (no era idempotencia, era `ALTER TABLE RENAME` de la v2 corrompiendo el FK
    de las 11 tablas que referencian `animal_events`) y arreglada con la migración v4
-   (`fixDanglingEventFk`). Pendiente: que Jaime reintente el pesaje con este fix aplicado y confirme
+   (`fixDanglingEventFk`). Pendiente: que Marvin reintente el pesaje con este fix aplicado y confirme
    en la terminal de Metro que ya no explota (buscar logs `[migrations] v4 ...`).
 7. **Testear interactivamente el módulo Alimentación** (recién reconstruido 2026-08-09, ver sección
    Módulos implementados) — nunca se probó en simulador/dispositivo real: Registros → Alimentación
    → elegir lote → guardar → confirmar que aparece como pendiente en `SyncScreen` y que sincroniza
    sin error 400 contra `/sync/engorde`.
+8. **Confirmar en el Android físico que el "FOREIGN KEY constraint failed" de la migración v2 quedó
+   resuelto** — ver sección Migraciones de schema local, entrada del 2026-08-17 (`PRAGMA
+   foreign_keys=OFF` alrededor del loop de `runMigrations`). Sin verificar todavía en el dispositivo
+   real donde se reportó. Si vuelve a fallar, revisar si aparece un warning de `foreign_key_check`
+   en el log — indicaría datos huérfanos reales, no solo el problema de orquestación ya arreglado.

@@ -5,6 +5,7 @@ import { getSession } from '../../auth/use-Auth';
 import { ANIMAL_STATUSES, PRODUCTIVE_STATUSES } from '../../db.sqlite/database';
 import { getDb } from '../../db.sqlite/db-pool';
 import { newId, now } from '../../db.sqlite/db-utils';
+import { assertCapacityAvailable } from '../../subscriptions/use-CapacityGuard';
 
 // ─── Tipos de entrada ─────────────────────────────────────────────────────────
 
@@ -52,6 +53,12 @@ export function useAnimalRegister() {
             const session = await getSession();
             if (!session) {
                 setError('No hay sesión activa.');
+                return false;
+            }
+
+            const capacityCheck = await assertCapacityAvailable(session.id_ranch, 1);
+            if (!capacityCheck.allowed) {
+                setError(capacityCheck.message);
                 return false;
             }
 

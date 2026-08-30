@@ -16,6 +16,8 @@ import { BarnIcon } from '../../../../components/icons/AppIcons';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../constants/theme';
 import { getSession, getUserData, logout, SessionParams } from '../../../../hooks/auth/use-Auth';
 import { getDb } from '../../../../hooks/db.sqlite/db-pool';
+import { countActiveAnimals } from '../../../../hooks/db.sqlite/repositories/animals';
+import { getEffectiveCapacity, useSubscription } from '../../../../hooks/subscriptions/use-Subscription';
 
 const ROLE_LABELS: Record<number, string> = {
     1: 'Ganadero',
@@ -31,6 +33,10 @@ export default function UsuarioScreen() {
     const [animalCount, setAnimalCount] = useState<number | null>(null);
     const [hectareas, setHectareas] = useState<number | null>(null);
     const [isOnline, setIsOnline] = useState(true);
+    const [idRanch, setIdRanch] = useState<string | undefined>(undefined);
+    const [planHeadcount, setPlanHeadcount] = useState<number | null>(null);
+    const { subscription } = useSubscription(idRanch);
+    const planCapacity = getEffectiveCapacity(subscription);
 
     useFocusEffect(
         useCallback(() => {
@@ -42,6 +48,7 @@ export default function UsuarioScreen() {
 
             getSession().then(async session => {
                 if (!session) return;
+                setIdRanch(session.id_ranch);
                 const db = await getDb();
                 // La columna real es id_status (no "status"); esta query fallaba siempre en
                 // silencio (atrapada abajo) y el contador quedaba en "---" para siempre.
@@ -55,6 +62,11 @@ export default function UsuarioScreen() {
                     [session.id_ranch]
                 );
                 setHectareas(ha?.total ?? 0);
+                // Mismo conteo que usa el guard de capacidad (id_productive_status != Baja) —
+                // a propósito distinto del animalCount de arriba (que filtra por id_status,
+                // un campo distinto), porque la barra de uso tiene que reflejar EXACTO lo
+                // mismo que el backend usa para bloquear altas, si no confunde al usuario.
+                setPlanHeadcount(await countActiveAnimals(session.id_ranch));
             }).catch(() => {});
 
             const unsub = NetInfo.addEventListener(state => {
@@ -136,6 +148,17 @@ export default function UsuarioScreen() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
             >
+                {/* Aviso de límite de plan alcanzado */}
+                {planHeadcount !== null && planCapacity != null && planHeadcount >= planCapacity && (
+                    <View style={styles.limitBanner}>
+                        <Ionicons name="alert-circle" size={20} color={Colors.error} />
+                        <Text style={styles.limitBannerText}>
+                            Alcanzaste el límite de tu plan ({planHeadcount}/{planCapacity} animales).
+                            Actualizá tu plan o no vas a poder subir más animales.
+                        </Text>
+                    </View>
+                )}
+
                 {/* Avatar + nombre + rol */}
                 <View style={styles.profileHeader}>
                     <View style={styles.avatar}>
@@ -178,6 +201,44 @@ export default function UsuarioScreen() {
                                 </View>
                             </View>
                         </View>
+
+                        {/* Uso del plan */}
+                        {subscription && planHeadcount !== null && (
+                            <View style={styles.usageBlock}>
+                                <View style={styles.usageHeader}>
+                                    <Text style={styles.usageLabel}>Plan {subscription.plan.name}</Text>
+                                    <Text style={styles.usageCount}>
+                                        {planHeadcount}{planCapacity != null ? ` / ${planCapacity}` : ''} animales
+                                    </Text>
+                                </View>
+                                {planCapacity != null && (
+                                    <View style={styles.usageBarTrack}>
+                                        <View
+                                            style={[
+                                                styles.usageBarFill,
+                                                {
+                                                    width: `${Math.min(100, (planHeadcount / planCapacity) * 100)}%`,
+                                                    backgroundColor:
+                                                        planHeadcount >= planCapacity
+                                                            ? Colors.error
+                                                            : planHeadcount / planCapacity >= 0.8
+                                                                ? Colors.warning
+                                                                : Colors.primary,
+                                                },
+                                            ]}
+                                        />
+                                    </View>
+                                )}
+                                {planCapacity == null && (
+                                    <Text style={styles.usageUnlimited}>Sin límite de animales</Text>
+                                )}
+                                {(subscription.effectiveStatus === 'expired' || subscription.effectiveStatus === 'cancelled') && (
+                                    <Text style={styles.usageWarningDanger}>
+                                        Plan vencido — capacidad limitada a la del plan Free hasta renovar
+                                    </Text>
+                                )}
+                            </View>
+                        )}
                     </View>
                 )}
 
@@ -261,6 +322,26 @@ const styles = StyleSheet.create({
     scrollContent: {
         paddingHorizontal: Spacing.lg,
         paddingTop: Spacing.sm,
+    },
+
+    // ── Aviso de límite de plan ───────────────────────────────────────────────
+    limitBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: Spacing.sm,
+        backgroundColor: Colors.errorLight,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.error + '40',
+        padding: Spacing.md,
+        marginBottom: Spacing.md,
+    },
+    limitBannerText: {
+        flex: 1,
+        fontFamily: Typography.fontSecondary,
+        fontSize: 13,
+        fontWeight: '600',
+        color: Colors.error,
     },
 
     // ── Perfil ────────────────────────────────────────────────────────────────
@@ -350,6 +431,48 @@ const styles = StyleSheet.create({
         fontSize: 20,
         fontWeight: '700',
         color: Colors.textPrimary,
+    },
+
+    // ── Uso del plan ──────────────────────────────────────────────────────────
+    usageBlock: {
+        gap: 6,
+    },
+    usageHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    usageLabel: {
+        fontFamily: Typography.fontPrimary,
+        fontSize: 13,
+        fontWeight: '700',
+        color: Colors.textPrimary,
+    },
+    usageCount: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 12,
+        color: Colors.textSecondary,
+    },
+    usageBarTrack: {
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: Colors.iconBg,
+        overflow: 'hidden',
+    },
+    usageBarFill: {
+        height: '100%',
+        borderRadius: 4,
+    },
+    usageUnlimited: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 12,
+        color: Colors.textSecondary,
+    },
+    usageWarningDanger: {
+        fontFamily: Typography.fontSecondary,
+        fontSize: 12,
+        color: Colors.error,
+        fontWeight: '600',
     },
 
     // ── Información personal ──────────────────────────────────────────────────

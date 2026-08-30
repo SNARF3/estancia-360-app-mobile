@@ -129,6 +129,23 @@ export async function getAnimals(params: {
     );
 }
 
+/**
+ * Headcount de la estancia para el control de capacidad del plan de suscripción —
+ * replica EXACTO la regla del backend (RanchAnimalsService.countActiveByRanch):
+ * animales con id_productive_status distinto de Baja (4); NULL cuenta como activo.
+ * OJO: no es lo mismo que el filtro `id_status != INACTIVO` que usa getAnimals()
+ * — son dos campos distintos con reglas distintas, no reusar uno por el otro.
+ */
+export async function countActiveAnimals(id_ranch: string): Promise<number> {
+    const db = await getDb();
+    const row = await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM ranch_animals
+     WHERE id_ranch = ? AND (id_productive_status IS NULL OR id_productive_status != 4)`,
+        [id_ranch]
+    );
+    return row?.count ?? 0;
+}
+
 /** Busca un animal por ID local o server_id */
 export async function getAnimalById(id: string): Promise<Animal | null> {
     const db = await getDb();

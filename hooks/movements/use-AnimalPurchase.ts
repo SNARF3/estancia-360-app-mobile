@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { getSession } from '../auth/use-Auth';
 import { registerMovement } from '../db.sqlite/repositories/events';
+import { assertCapacityAvailable } from '../subscriptions/use-CapacityGuard';
 
 export interface NewPurchaseAnimalRow {
     code: string;
@@ -77,6 +78,14 @@ export function useAnimalPurchase() {
                     [session.id_ranch, code]
                 );
                 if (existing) { setError(`Ya existe un animal con código "${code}" en esta estancia.`); return false; }
+            }
+
+            // Todo-o-nada, igual que el backend: si el lote completo de animales
+            // comprados supera el límite, se rechaza entero, no se procesan algunos.
+            const capacityCheck = await assertCapacityAvailable(session.id_ranch, formData.animals.length);
+            if (!capacityCheck.allowed) {
+                setError(capacityCheck.message);
+                return false;
             }
 
             await registerMovement({
