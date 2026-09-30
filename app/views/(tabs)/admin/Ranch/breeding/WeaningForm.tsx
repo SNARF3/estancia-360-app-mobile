@@ -16,8 +16,10 @@ import { Colors } from '../../../../../../constants/theme';
 import { useWeaning } from '../../../../../../hooks/breeding/use-Weaning';
 import { type Lot } from '../../../../../../hooks/Ranch/use-Pastures';
 import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 export default function WeaningForm() {
+    useScreenLifecycleLog('WeaningForm');
     const insets = useSafeAreaInsets();
     const router = useRouter();
   const [isPickerVisible, setIsPickerVisible] = useState(false);

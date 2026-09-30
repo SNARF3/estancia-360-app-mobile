@@ -14,16 +14,30 @@ import {
 import { Colors } from '../../../../constants/theme';
 import { getToken, saveSession } from '../../../../hooks/auth/use-Auth';
 import { getRequest } from '../../../../hooks/db.postre-connection/db.connection';
+import { downloadFromServer } from '../../../../hooks/db.sqlite/sync';
+import { decryptRanchQrPayload } from '../../../../hooks/security/qrEncryption';
 import { useWorkerWithRanch } from '../../../../hooks/workers/use-WorkerWithRanch'; // Ajusta la ruta si es necesario
 
 import { showMessage } from 'react-native-flash-message';
+
+interface PendingRanch {
+    ranchId: number;
+    ranchName: string;
+    userId: number;
+    userIdRole: number;
+    userEmail: string;
+    userFullname: string;
+}
+
 export default function QrScannerRanch() {
     const router = useRouter();
     const [permission, requestPermission] = useCameraPermissions();
     const [scanned, setScanned] = useState(false);
+    const [pendingRanch, setPendingRanch] = useState<PendingRanch | null>(null);
+    const [confirming, setConfirming] = useState(false);
 
     // Hook de vinculación
-    const { linkWorkerToRanch, loading } = useWorkerWithRanch();
+    const { linkWorkerToRanch } = useWorkerWithRanch();
 
     useEffect(() => {
         if (!permission?.granted) {
@@ -33,10 +47,10 @@ export default function QrScannerRanch() {
 
     const handleBarCodeScanned = async ({ type, data }: any) => {
         setScanned(true);
-        console.log(`📡 QR Escaneado [${type}]: ${data}`);
+        console.log(`📡 QR Escaneado [${type}]`);
 
         try {
-            // 1. Obtener ID del Usuario actual (Worker)
+            // 1. Obtener ID del Usuario actual (Colaborador)
             const userDataStr = await AsyncStorage.getItem('user_data');
             if (!userDataStr) {
                 showMessage({
@@ -49,9 +63,6 @@ export default function QrScannerRanch() {
             }
 
             const userData = JSON.parse(userDataStr);
-            console.log("🔍 Datos de usuario recuperados:", userData);
-
-            // Ajuste para usar la propiedad correcta 'idUser'
             const userId = userData.idUser;
 
             if (!userId) {
@@ -63,23 +74,13 @@ export default function QrScannerRanch() {
                 return;
             }
 
-            // 2. Parsear data del QR
-            // Asumimos que el QR es un JSON: { "idRanch": 3 } o simplemente el número "3"
-            let ranchIdParsed: number;
+            // 2. Desencriptar el payload del QR (generado por QrWorkerGenerator.tsx)
+            const decoded = decryptRanchQrPayload(data);
 
-            try {
-                // Intento A: Es un JSON
-                const parsedData = JSON.parse(data);
-                ranchIdParsed = Number(parsedData.ranchId || parsedData.idRanch || parsedData.id);
-            } catch (e) {
-                // Intento B: Es solo un número o string plano
-                ranchIdParsed = Number(data);
-            }
-
-            if (!ranchIdParsed || isNaN(ranchIdParsed)) {
+            if (!decoded) {
                 showMessage({
                     message: "QR Inválido",
-                    description: "El código escaneado no contiene una ID de estancia válida.",
+                    description: "El código escaneado no es un QR de estancia válido.",
                     type: "warning",
                 });
                 // Dar tiempo para leer el mensaje antes de permitir escanear de nuevo
@@ -87,53 +88,16 @@ export default function QrScannerRanch() {
                 return;
             }
 
-            // 3. Llamar a la API
-            const success = await linkWorkerToRanch(userId, ranchIdParsed);
-
-            if (success) {
-                // Sin esto, la sesión local (AsyncStorage user_data + SQLite local_session)
-                // se queda sin id_ranch hasta el próximo login manual — el resto de la app
-                // (repositorios, pantallas de admin) depende de esa sesión para saber en qué
-                // estancia operar, así que quedaría "vinculado" en el servidor pero inutilizable
-                // en el dispositivo hasta cerrar sesión y volver a entrar.
-                try {
-                    const accessToken = await getToken();
-                    const ranchResponse = await getRequest<any>(`ranches/${ranchIdParsed}`);
-                    const ranch = ranchResponse?.data ?? ranchResponse;
-                    const currentMember = ranch?.ranchUsers?.find((ru: any) => ru.user?.id === userId);
-
-                    if (accessToken && ranch?.id) {
-                        await saveSession({
-                            accessToken,
-                            idUser: userId,
-                            idRole: userData.idRole,
-                            email: userData.email,
-                            fullname: currentMember?.user?.fullname ?? userData.fullname,
-                            id_ranch: ranch.id,
-                            ranch_name: ranch.name,
-                            production_types: (ranch.productionTypes ?? []).map((pt: any) => pt.idProductionType),
-                            ranch_role: currentMember?.role?.id ?? 2,
-                        });
-                    }
-                } catch (refreshError) {
-                    console.error('No se pudo refrescar la sesión local tras vincular:', refreshError);
-                }
-
-                showMessage({
-                    message: "¡Vinculación Exitosa!",
-                    description: "Te has unido a la estancia correctamente.",
-                    type: "success",
-                });
-                setTimeout(() => router.replace('/views/(tabs)/worker/WorkerManagement'), 1500);
-            } else {
-                // Si falla, permitimos escanear de nuevo
-                showMessage({
-                    message: "Error",
-                    description: "No se pudo vincular a la estancia.",
-                    type: "danger",
-                });
-                setTimeout(() => setScanned(false), 2000);
-            }
+            // 3. Mostrar la tarjeta de confirmación — no vinculamos todavía, eso pasa
+            // recién en handleConfirmJoin() cuando el usuario toca "Confirmar".
+            setPendingRanch({
+                ranchId: decoded.ranchId,
+                ranchName: decoded.ranchName,
+                userId,
+                userIdRole: userData.idRole,
+                userEmail: userData.email,
+                userFullname: userData.fullname,
+            });
 
         } catch (error) {
             console.error(error);
@@ -143,6 +107,112 @@ export default function QrScannerRanch() {
                 type: "danger",
             });
             setScanned(false);
+        }
+    };
+
+    const handleCancelJoin = () => {
+        setPendingRanch(null);
+        setScanned(false);
+    };
+
+    const handleConfirmJoin = async () => {
+        if (!pendingRanch) return;
+        const { ranchId, userId, userIdRole, userEmail, userFullname } = pendingRanch;
+        setConfirming(true);
+
+        try {
+            const success = await linkWorkerToRanch(userId, ranchId);
+
+            if (success) {
+                // Sin esto, la sesión local (AsyncStorage user_data + SQLite local_session)
+                // se queda sin id_ranch hasta el próximo login manual — el resto de la app
+                // (repositorios, pantallas de admin) depende de esa sesión para saber en qué
+                // estancia operar, así que quedaría "vinculado" en el servidor pero inutilizable
+                // en el dispositivo hasta cerrar sesión y volver a entrar.
+                //
+                // Bug real encontrado 2026-09-06: este bloque tragaba cualquier fallo (o
+                // directamente lo saltaba si accessToken/ranch venían vacíos) y SEGUÍA
+                // mostrando "¡Vinculación Exitosa!" + navegando, dejando al usuario creyendo
+                // que todo salió bien cuando en realidad su sesión local quedó sin
+                // actualizar. La vinculación en el servidor ya se hizo (success=true) y no
+                // tiene sentido deshacerla — pero no hay que simular un éxito completo si el
+                // guardado local falló.
+                let sessionRefreshed = false;
+                let confirmedRanchId: number | null = null;
+                try {
+                    const accessToken = await getToken();
+                    const ranchResponse = await getRequest<any>(`ranches/${ranchId}`);
+                    const ranch = ranchResponse?.data ?? ranchResponse;
+                    const currentMember = ranch?.ranchUsers?.find((ru: any) => ru.user?.id === userId);
+
+                    if (accessToken && ranch?.id) {
+                        await saveSession({
+                            accessToken,
+                            idUser: userId,
+                            idRole: userIdRole,
+                            email: userEmail,
+                            fullname: currentMember?.user?.fullname ?? userFullname,
+                            id_ranch: ranch.id,
+                            ranch_name: ranch.name,
+                            production_types: (ranch.productionTypes ?? []).map((pt: any) => pt.idProductionType),
+                            ranch_role: currentMember?.role?.id ?? 2,
+                        });
+                        sessionRefreshed = true;
+                        confirmedRanchId = ranch.id;
+                    }
+                } catch (refreshError) {
+                    console.error('No se pudo refrescar la sesión local tras vincular:', refreshError);
+                }
+
+                if (sessionRefreshed && confirmedRanchId) {
+                    // El colaborador recién se vinculó — su SQLite local todavía no tiene
+                    // ningún dato de esta estancia (animales, lotes, etc.). Sin este fullSync
+                    // quedaría con acceso a Management pero todo vacío hasta entrar
+                    // manualmente a Sync.
+                    try {
+                        await downloadFromServer(confirmedRanchId, { fullSync: true });
+                    } catch (syncError) {
+                        console.error('No se pudo descargar los datos de la estancia tras vincular:', syncError);
+                    }
+
+                    showMessage({
+                        message: "¡Vinculación Exitosa!",
+                        description: "Te has unido a la estancia correctamente.",
+                        type: "success",
+                    });
+                    setPendingRanch(null);
+                    setTimeout(() => router.replace('/views/(tabs)/admin/management/Management'), 1500);
+                } else {
+                    showMessage({
+                        message: "Vinculación incompleta",
+                        description: "Te uniste a la estancia, pero no se pudo actualizar tu sesión local. Cerrá sesión y volvé a entrar para verla.",
+                        type: "warning",
+                        duration: 5000,
+                    });
+                    setPendingRanch(null);
+                    setTimeout(() => setScanned(false), 3000);
+                }
+            } else {
+                // Si falla, permitimos escanear de nuevo
+                showMessage({
+                    message: "Error",
+                    description: "No se pudo vincular a la estancia.",
+                    type: "danger",
+                });
+                setPendingRanch(null);
+                setTimeout(() => setScanned(false), 2000);
+            }
+        } catch (error) {
+            console.error(error);
+            showMessage({
+                message: "Error",
+                description: "Ocurrió un error inesperado al vincular.",
+                type: "danger",
+            });
+            setPendingRanch(null);
+            setScanned(false);
+        } finally {
+            setConfirming(false);
         }
     };
 
@@ -164,7 +234,7 @@ export default function QrScannerRanch() {
             <CameraView
                 style={StyleSheet.absoluteFillObject}
                 facing="back"
-                onBarcodeScanned={scanned || loading ? undefined : handleBarCodeScanned}
+                onBarcodeScanned={scanned || pendingRanch || confirming ? undefined : handleBarCodeScanned}
                 barcodeScannerSettings={{
                     barcodeTypes: ["qr"],
                 }}
@@ -189,14 +259,44 @@ export default function QrScannerRanch() {
                 <Text style={styles.instructions}>
                     Apunta la cámara al código QR de la estancia
                 </Text>
-
-                {loading && (
-                    <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color={Colors.primary} />
-                        <Text style={styles.loadingText}>Vinculando...</Text>
-                    </View>
-                )}
             </View>
+
+            {/* Tarjeta de confirmación — aparece tras desencriptar un QR válido, antes de
+                llamar a la API. El usuario ve a qué estancia se va a unir y tiene que
+                confirmar explícitamente. */}
+            {pendingRanch && (
+                <View style={styles.confirmOverlay}>
+                    <View style={styles.confirmCard}>
+                        <Ionicons name="business" size={40} color={Colors.primary} />
+                        <Text style={styles.confirmTitle}>¿Unirte a esta estancia?</Text>
+                        <Text style={styles.confirmRanchName}>{pendingRanch.ranchName}</Text>
+
+                        {confirming ? (
+                            <View style={styles.confirmLoadingRow}>
+                                <ActivityIndicator size="small" color={Colors.primary} />
+                                <Text style={styles.confirmLoadingText}>Vinculando...</Text>
+                            </View>
+                        ) : (
+                            <View style={styles.confirmButtonsRow}>
+                                <TouchableOpacity
+                                    style={[styles.confirmButton, styles.confirmButtonCancel]}
+                                    onPress={handleCancelJoin}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={styles.confirmButtonCancelText}>Cancelar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.confirmButton, styles.confirmButtonAccept]}
+                                    onPress={handleConfirmJoin}
+                                    activeOpacity={0.8}
+                                >
+                                    <Text style={styles.confirmButtonAcceptText}>Confirmar</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </View>
+                </View>
+            )}
         </View>
     );
 }
@@ -217,6 +317,34 @@ const styles = StyleSheet.create({
     cornerBL: { position: 'absolute', bottom: 0, left: 0, width: 40, height: 40, borderBottomWidth: 4, borderLeftWidth: 4, borderColor: Colors.primary },
     cornerBR: { position: 'absolute', bottom: 0, right: 0, width: 40, height: 40, borderBottomWidth: 4, borderRightWidth: 4, borderColor: Colors.primary },
 
-    loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-    loadingText: { color: 'white', marginTop: 10, fontWeight: 'bold' }
+    // Tarjeta de confirmación
+    confirmOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.75)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 30,
+    },
+    confirmCard: {
+        width: '100%',
+        backgroundColor: 'white',
+        borderRadius: 20,
+        padding: 24,
+        alignItems: 'center',
+        gap: 8,
+    },
+    confirmTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginTop: 8, textAlign: 'center' },
+    confirmRanchName: { fontSize: 22, fontWeight: 'bold', color: Colors.primary, textAlign: 'center', marginBottom: 12 },
+    confirmButtonsRow: { flexDirection: 'row', gap: 12, width: '100%' },
+    confirmButton: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+    confirmButtonCancel: { backgroundColor: '#f0f0f0' },
+    confirmButtonCancelText: { color: '#555', fontWeight: '600' },
+    confirmButtonAccept: { backgroundColor: Colors.primaryButton },
+    confirmButtonAcceptText: { color: 'white', fontWeight: '700' },
+    confirmLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+    confirmLoadingText: { color: '#555', fontWeight: '600' },
 });

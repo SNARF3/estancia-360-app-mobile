@@ -20,6 +20,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDb } from './db-pool';
 import { newId, now } from './db-utils';
 import { API_BASE_URL } from '../config/api';
+import { devLog } from '../devLogger';
 import { getCredentials } from '../auth/use-Auth';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -173,7 +174,7 @@ async function refreshAuthToken(): Promise<void> {
         const data = await res.json() as { accessToken?: string };
         if (data.accessToken) {
             await AsyncStorage.setItem('access_token', data.accessToken);
-            console.log('[sync] token refreshed');
+            devLog('[sync] token refreshed');
         }
     } catch (e) {
         console.warn('[sync] refresh token error:', e);
@@ -182,7 +183,7 @@ async function refreshAuthToken(): Promise<void> {
 
 async function getAuthToken(): Promise<string> {
     const token = await AsyncStorage.getItem('access_token');
-    console.log('[sync] token exists:', !!token);
+    devLog('[sync] token exists:', !!token);
     if (!token) throw new Error('No hay sesión activa');
     return token;
 }
@@ -201,7 +202,7 @@ function isNetworkError(err: unknown): boolean {
 
 async function apiFetch(endpoint: string, body: object): Promise<BatchResponse> {
     const url = `${API_BASE_URL}${endpoint}`;
-    console.log('[sync] POST', url);
+    devLog('[sync] POST', url);
     const token = await getAuthToken();
     const res = await fetch(url, {
         method: 'POST',
@@ -211,7 +212,7 @@ async function apiFetch(endpoint: string, body: object): Promise<BatchResponse> 
         },
         body: JSON.stringify(body),
     });
-    console.log('[sync] response status:', res.status);
+    devLog('[sync] response status:', res.status);
     if (!res.ok) {
         const text = await res.text();
         console.error('[sync] response error:', text);
@@ -260,7 +261,7 @@ async function buildServerIdMap(): Promise<Map<string, string>> {
             for (const row of rows) map.set(row.id, row.server_id);
         } catch { /* tabla puede no existir */ }
     }
-    console.log('[sync] serverIdMap size:', map.size);
+    devLog('[sync] serverIdMap size:', map.size);
     return map;
 }
 
@@ -274,11 +275,12 @@ function buildData(
     row: Record<string, unknown>,
     fkFields: string[],
     serverIdMap: Map<string, string>,
-    fieldDefaults: Record<string, unknown> = {}
+    fieldDefaults: Record<string, unknown> = {},
+    excludeFields: string[] = []
 ): Record<string, unknown> {
     const data: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(row)) {
-        if (key === 'id' || META_FIELDS.has(key)) continue;
+        if (key === 'id' || META_FIELDS.has(key) || excludeFields.includes(key)) continue;
         // Aplicar default si el valor es nulo o cero en campos que tienen default
         const isMissing = value === null || value === undefined || (value === 0 && fieldDefaults[key] !== undefined);
         const effective = isMissing ? (fieldDefaults[key] ?? null) : value;
@@ -314,7 +316,12 @@ function toBatchItems(
     rows: Record<string, unknown>[],
     fkFields: string[],
     serverIdMap: Map<string, string>,
-    fieldDefaults: Record<string, unknown> = {}
+    fieldDefaults: Record<string, unknown> = {},
+    excludeFields: string[] = [],
+    // feed_records es el único tipo de registro que no genera animal_event — su DTO en el
+    // backend no tiene (ni acepta) `happenedAt` a nivel de ítem, y lo rechaza con 400
+    // ("property happenedAt should not exist") por validación estricta (whitelist).
+    includeHappenedAt: boolean = true
 ): BatchItem[] {
     return rows.map(row => {
         const rawServerId = row.server_id as string | null | undefined;
@@ -325,7 +332,7 @@ function toBatchItems(
             localId: row.id as string,
             operation: OPERATION_MAP[(row.sync_action as string) ?? 'INSERT'] ?? 'create',
             ...(serverId != null ? { serverId } : {}),
-            data: buildData(row, fkFields, serverIdMap, fieldDefaults),
+            data: buildData(row, fkFields, serverIdMap, fieldDefaults, excludeFields),
             // El backend (EventSyncOperationDto.happenedAt, ver base-sync-operation.dto.ts:
             // "When this event happened on the device — Stored as eventDate") usa ESTE campo
             // como la fecha real del evento para breeding_services/gestation_diagnoses/
@@ -337,7 +344,9 @@ function toBatchItems(
             // LOCALMENTE, que solo coincide con la real cuando el registro no se backdatea.
             // Antes esto mandaba siempre created_at — cualquier carga con fecha distinta a
             // "ahora mismo" sincronizaba con la fecha equivocada.
-            happenedAt: (row.event_date ?? row.created_at ?? row.updated_at) as string | undefined,
+            ...(includeHappenedAt
+                ? { happenedAt: (row.event_date ?? row.created_at ?? row.updated_at) as string | undefined }
+                : {}),
         };
     });
 }
@@ -368,16 +377,16 @@ async function applyResponse(
     response: BatchResponse,
     errors: SyncError[]
 ): Promise<number> {
-    console.log(`[sync] server totals → succeeded:${response.totalSucceeded} failed:${response.totalFailed}`);
+    devLog(`[sync] server totals → succeeded:${response.totalSucceeded} failed:${response.totalFailed}`);
     let synced = 0;
     await db.withTransactionAsync(async () => {
         for (const { key, table } of config) {
             const entity = response[key] as BatchEntityResponse | undefined;
             if (!entity || !Array.isArray(entity.results)) continue;
-            console.log(`[sync]   ${key}: ${entity.succeeded} ok, ${entity.failed} failed`);
+            devLog(`[sync]   ${key}: ${entity.succeeded} ok, ${entity.failed} failed`);
             for (const item of entity.results) {
                 if (item.error || item.serverId == null) {
-                    console.log(`[sync]     FAIL [${item.localId?.slice(0,8)}]: ${item.error ?? 'sin serverId'}`);
+                    devLog(`[sync]     FAIL [${item.localId?.slice(0,8)}]: ${item.error ?? 'sin serverId'}`);
                     errors.push({ table, id: item.localId ?? '', error: item.error ?? 'sin serverId en respuesta' });
                     continue;
                 }
@@ -425,7 +434,7 @@ async function syncCria(
         } catch { /* tabla no existe */ }
     }
     if (!hasPending) {
-        console.log('[sync] syncCria → nada pendiente');
+        devLog('[sync] syncCria → nada pendiente');
         return { synced: 0, errors: [] };
     }
 
@@ -433,8 +442,8 @@ async function syncCria(
     try {
         const r1 = await db.runAsync(`UPDATE ranch_pastures SET area_hectares=0 WHERE area_hectares IS NULL`);
         const r2 = await db.runAsync(`UPDATE ranch_animals SET id_animal_class=1 WHERE id_animal_class IS NULL`);
-        if (r1.changes > 0) console.log(`[sync] patch area_hectares: ${r1.changes} rows`);
-        if (r2.changes > 0) console.log(`[sync] patch id_animal_class: ${r2.changes} rows`);
+        if (r1.changes > 0) devLog(`[sync] patch area_hectares: ${r1.changes} rows`);
+        if (r2.changes > 0) devLog(`[sync] patch id_animal_class: ${r2.changes} rows`);
     } catch (e) { console.warn('[sync] patch error:', e); }
 
     onProgress?.('Preparando datos de Cría...', 15);
@@ -446,29 +455,37 @@ async function syncCria(
             const query = needsEvent
                 ? `SELECT t.*, ae.id_ranch_animal, ae.event_date FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
                 : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
-            const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
+            // id_event nunca puede resolver contra serverIdMap (animal_events no se
+            // sincroniza como entidad propia — no está en ALL_TABLES) — una vez extraído
+            // id_ranch_animal vía el JOIN de arriba, id_event se descarta del todo en vez de
+            // mandarse como localRef_idEvent (el backend lo rechaza: no hay ningún ítem con
+            // ese localId en el batch, porque nunca lo hay).
+            const effectiveFkFields = needsEvent
+                ? [...fkFields.filter(f => f !== 'id_event'), 'id_ranch_animal']
+                : fkFields;
+            const excludeFields = needsEvent ? ['id_event'] : [];
 
             const rows = await db.getAllAsync<Record<string, unknown>>(query);
             if (rows.length > 0) {
-                batch[key] = toBatchItems(rows, effectiveFkFields, serverIdMap, fieldDefaults);
-                console.log(`[sync] cría batch ${key}: ${rows.length} registros`);
+                batch[key] = toBatchItems(rows, effectiveFkFields, serverIdMap, fieldDefaults, excludeFields);
+                devLog(`[sync] cría batch ${key}: ${rows.length} registros`);
             }
         } catch (e) { console.warn(`[sync] batch error ${table}:`, e); }
     }
 
     if (Object.keys(batch).length === 0) return { synced: 0, errors: [] };
 
-    console.log('[sync] cría payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
+    devLog('[sync] cría payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
     for (const [key, items] of Object.entries(batch)) {
-        console.log(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
+        devLog(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
     }
 
     // LOG DIAGNÓSTICO — aparece después de conectar al servidor
     onProgress?.('Enviando datos de Cría...', 30);
     const idRanch = await getRanchId();
     const response = await apiFetch('/sync/cria', { idRanch, ...batch });
-    console.log('[sync] DIAG pasture[0] data:', JSON.stringify(batch.ranchPastures?.[0]?.data));
-    console.log('[sync] DIAG animal[0] data:', JSON.stringify(batch.ranchAnimals?.[0]?.data));
+    devLog('[sync] DIAG pasture[0] data:', JSON.stringify(batch.ranchPastures?.[0]?.data));
+    devLog('[sync] DIAG animal[0] data:', JSON.stringify(batch.ranchAnimals?.[0]?.data));
 
     onProgress?.('Aplicando respuesta de Cría...', 45);
     const synced = await applyResponse(db, CRIA_CONFIG, response, errors);
@@ -514,7 +531,7 @@ async function syncRecria(
         } catch { /* tabla no existe */ }
     }
     if (!hasPending) {
-        console.log('[sync] syncRecria → nada pendiente');
+        devLog('[sync] syncRecria → nada pendiente');
         return { synced: 0, errors: [] };
     }
 
@@ -527,21 +544,25 @@ async function syncRecria(
             const query = needsEvent
                 ? `SELECT t.*, ae.id_ranch_animal, ae.event_date FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
                 : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
-            const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
+            // Ver comentario equivalente en syncCria — id_event nunca resuelve, se descarta.
+            const effectiveFkFields = needsEvent
+                ? [...fkFields.filter(f => f !== 'id_event'), 'id_ranch_animal']
+                : fkFields;
+            const excludeFields = needsEvent ? ['id_event'] : [];
 
             const rows = await db.getAllAsync<Record<string, unknown>>(query);
             if (rows.length > 0) {
-                batch[key] = toBatchItems(rows, effectiveFkFields, serverIdMap, fieldDefaults);
-                console.log(`[sync] recría batch ${key}: ${rows.length} registros`);
+                batch[key] = toBatchItems(rows, effectiveFkFields, serverIdMap, fieldDefaults, excludeFields);
+                devLog(`[sync] recría batch ${key}: ${rows.length} registros`);
             }
         } catch (e) { console.warn(`[sync] batch error ${table}:`, e); }
     }
 
     if (Object.keys(batch).length === 0) return { synced: 0, errors: [] };
 
-    console.log('[sync] recría payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
+    devLog('[sync] recría payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
     for (const [key, items] of Object.entries(batch)) {
-        console.log(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
+        devLog(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
     }
 
     onProgress?.('Enviando datos de Recría...', 62);
@@ -574,7 +595,7 @@ async function syncEngorde(
         } catch { /* tabla no existe */ }
     }
     if (!hasPending) {
-        console.log('[sync] syncEngorde → nada pendiente');
+        devLog('[sync] syncEngorde → nada pendiente');
         return { synced: 0, errors: [] };
     }
 
@@ -587,21 +608,28 @@ async function syncEngorde(
             const query = needsEvent
                 ? `SELECT t.*, ae.id_ranch_animal, ae.event_date FROM ${table} t LEFT JOIN animal_events ae ON ae.id = t.id_event WHERE t.is_synced = 0${extra}`
                 : `SELECT * FROM ${table} WHERE is_synced = 0${extra}`;
-            const effectiveFkFields = needsEvent ? [...fkFields, 'id_ranch_animal'] : fkFields;
+            // Ver comentario equivalente en syncCria — id_event nunca resuelve, se descarta.
+            const effectiveFkFields = needsEvent
+                ? [...fkFields.filter(f => f !== 'id_event'), 'id_ranch_animal']
+                : fkFields;
+            const excludeFields = needsEvent ? ['id_event'] : [];
+            // feed_records es el único registro sin animal_event — su DTO no acepta
+            // happenedAt a nivel de ítem (ver comentario en toBatchItems).
+            const includeHappenedAt = table !== 'feed_records';
 
             const rows = await db.getAllAsync<Record<string, unknown>>(query);
             if (rows.length > 0) {
-                batch[key] = toBatchItems(rows, effectiveFkFields, serverIdMap, fieldDefaults);
-                console.log(`[sync] engorde batch ${key}: ${rows.length} registros`);
+                batch[key] = toBatchItems(rows, effectiveFkFields, serverIdMap, fieldDefaults, excludeFields, includeHappenedAt);
+                devLog(`[sync] engorde batch ${key}: ${rows.length} registros`);
             }
         } catch (e) { console.warn(`[sync] batch error ${table}:`, e); }
     }
 
     if (Object.keys(batch).length === 0) return { synced: 0, errors: [] };
 
-    console.log('[sync] engorde payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
+    devLog('[sync] engorde payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
     for (const [key, items] of Object.entries(batch)) {
-        console.log(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
+        devLog(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
     }
 
     onProgress?.('Enviando datos de Engorde...', 84);
@@ -644,7 +672,7 @@ async function syncSanidad(
         } catch { /* tabla no existe */ }
     }
     if (!hasPending) {
-        console.log('[sync] syncSanidad → nada pendiente');
+        devLog('[sync] syncSanidad → nada pendiente');
         return { synced: 0, errors: [] };
     }
 
@@ -656,16 +684,16 @@ async function syncSanidad(
             const rows = await db.getAllAsync<Record<string, unknown>>(query);
             if (rows.length > 0) {
                 batch[key] = toBatchItems(rows, fkFields, serverIdMap);
-                console.log(`[sync] sanidad batch ${key}: ${rows.length} registros`);
+                devLog(`[sync] sanidad batch ${key}: ${rows.length} registros`);
             }
         } catch (e) { console.warn(`[sync] batch error ${table}:`, e); }
     }
 
     if (Object.keys(batch).length === 0) return { synced: 0, errors: [] };
 
-    console.log('[sync] sanidad payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
+    devLog('[sync] sanidad payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
     for (const [key, items] of Object.entries(batch)) {
-        console.log(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
+        devLog(`[sync]   ${key}[0] sample:`, JSON.stringify(items[0]));
     }
 
     onProgress?.('Enviando datos de Sanidad...', 94);
@@ -802,7 +830,7 @@ async function syncMovimientos(
         } catch { /* tabla no existe */ }
     }
     if (!hasPending) {
-        console.log('[sync] syncMovimientos → nada pendiente');
+        devLog('[sync] syncMovimientos → nada pendiente');
         return { synced: 0, errors: [] };
     }
 
@@ -832,7 +860,7 @@ async function syncMovimientos(
 
     if (Object.keys(batch).length === 0) return { synced: 0, errors: [] };
 
-    console.log('[sync] movimientos payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
+    devLog('[sync] movimientos payload:', Object.fromEntries(Object.entries(batch).map(([k, v]) => [k, v.length])));
 
     onProgress?.('Enviando datos de Movimientos...', 98);
     const idRanch = await getRanchId();
@@ -871,7 +899,7 @@ async function syncMovimientos(
 export async function syncAll(
     onProgress?: (msg: string, pct: number) => void
 ): Promise<SyncResult> {
-    console.log('[sync] syncAll v5 start');
+    devLog('[sync] syncAll v5 start');
     const allErrors: SyncError[] = [];
     let totalSynced = 0;
 
@@ -896,7 +924,7 @@ export async function syncAll(
         for (const [name, run] of modules) {
             try {
                 const result = await run();
-                console.log(`[sync] ${name}:`, result.synced, 'synced,', result.errors.length, 'errors');
+                devLog(`[sync] ${name}:`, result.synced, 'synced,', result.errors.length, 'errors');
                 totalSynced += result.synced;
                 allErrors.push(...result.errors);
             } catch (err) {
@@ -921,7 +949,7 @@ export async function syncAll(
         });
     }
 
-    console.log('[sync] done → synced:', totalSynced, 'failed:', allErrors.length);
+    devLog('[sync] done → synced:', totalSynced, 'failed:', allErrors.length);
     return {
         success: allErrors.length === 0,
         synced: totalSynced,
@@ -945,6 +973,32 @@ export async function getPendingCount(): Promise<number> {
         } catch { /* tabla no existe */ }
     }
     return total;
+}
+
+/**
+ * Borra todos los datos productivos locales de la estancia activa + la sesión local
+ * (local_session). Se llama SOLO desde logout() (use-Auth.ts), y SOLO después de que
+ * useLogoutWithSync() confirmó un syncAll() exitoso — nunca antes, o se pierden datos sin
+ * sincronizar. No toca catálogos (animal_breeds/animal_classes/animal_statuses): son
+ * globales, iguales para cualquier usuario, no dependen de sesión.
+ *
+ * Motivo: un dispositivo compartido entre distintas cuentas/estancias no debe conservar
+ * datos de la sesión anterior — ver hallazgo QA de aislamiento en dispositivos compartidos.
+ */
+export async function wipeLocalRanchData(): Promise<void> {
+    const db = await getDb();
+    for (const table of ALL_TABLES) {
+        try {
+            await db.runAsync(`DELETE FROM ${table}`);
+        } catch (err) {
+            console.error(`[sync] wipeLocalRanchData: no se pudo borrar ${table}`, err);
+        }
+    }
+    try {
+        await db.runAsync(`DELETE FROM local_session`);
+    } catch (err) {
+        console.error('[sync] wipeLocalRanchData: no se pudo borrar local_session', err);
+    }
 }
 
 // ─── Descarga desde servidor (bootstrap e incremental) ───────────────────────
@@ -1010,8 +1064,21 @@ function camelToSnake(key: string): string {
     return key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
 }
 
-function normalizeValue(v: unknown): unknown {
+// Bug real encontrado 2026-09-23 (ver docs/dev-logging.md): idRanch (y cualquier otro campo tipo
+// "catálogo, pasa sin traducir" — ver comentario de FK_RESOLUTION más abajo) se guarda en
+// columnas declaradas TEXT (ver database.ts, ej. "id_ranch TEXT NOT NULL — UUID del ranch
+// activo"). El resto de la app siempre lo compara como string vía saveSession()'s
+// `params.id_ranch.toString()` (produce "1", nunca "1.0" — Number.prototype.toString() de JS no
+// agrega decimales a un entero). Si acá se deja pasar el número crudo tal cual llega del JSON del
+// servidor, SQLite bindea ese valor con afinidad REAL y su cast automático a TEXT de la columna
+// produce "1.0" en vez de "1" — nunca vuelve a matchear con `session.id_ranch` en ninguna query
+// futura (`WHERE id_ranch = ?`), y la fila queda invisible para toda la app aunque exista y se
+// haya descargado perfecto. Encontrado porque el listado de animales daba siempre vacío pese a
+// que la descarga reportaba éxito — confirmado con un diagnóstico que mostró
+// `{"id_ranch": "1.0", "t": "text"}` en la tabla real.
+function normalizeValue(key: string, v: unknown): unknown {
     if (typeof v === 'boolean') return v ? 1 : 0;
+    if (key === 'idRanch' && typeof v === 'number') return String(v);
     return v ?? null;
 }
 
@@ -1083,7 +1150,7 @@ async function resolveDownloadFk(
 
 async function apiGet(endpoint: string, signal?: AbortSignal): Promise<unknown> {
     const url = `${API_BASE_URL}${endpoint}`;
-    console.log('[sync] GET', url);
+    devLog('[sync] GET', url);
     const token = await getAuthToken();
     const res = await fetch(url, {
         method: 'GET',
@@ -1117,7 +1184,7 @@ async function upsertEntity(
         if (fkFields[k]) {
             snakeRow[camelToSnake(k)] = await resolveDownloadFk(db, fkFields[k], v, fkMap);
         } else {
-            snakeRow[camelToSnake(k)] = normalizeValue(v);
+            snakeRow[camelToSnake(k)] = normalizeValue(k, v);
         }
     }
 
@@ -1189,6 +1256,7 @@ export async function downloadFromServer(
         'SELECT last_sync FROM local_session WHERE id = 1'
     );
     const since = fullSync ? undefined : (session?.last_sync ?? undefined);
+    devLog(`[sync-download] idRanch=${idRanch} fullSync=${fullSync} since=${since ?? '(sin marca — full)'}`);
 
     let pulled = 0;
     let deleted = 0;
@@ -1215,6 +1283,7 @@ export async function downloadFromServer(
 
             pageNum++;
             onProgress?.(`Descargando datos (página ${pageNum})...`, Math.min(progress, 75));
+            devLog(`[sync-download] GET ${endpoint}`);
 
             const raw = await apiGet(endpoint, signal);
             const body = (raw as any)?.data ?? raw as any;
@@ -1224,17 +1293,33 @@ export async function downloadFromServer(
             const entities = (body.entities ?? {}) as Record<string, Record<string, unknown>[]>;
             const deletions = (body.deletions ?? []) as Array<{ table: string; ids: (number | string)[] }>;
 
+            devLog(
+                `[sync-download] página ${pageNum} → entidades por tipo:`,
+                Object.fromEntries(Object.entries(entities).map(([k, v]) => [k, v.length])),
+                `| deletions:`, deletions.map(d => `${d.table}:${d.ids.length}`),
+                `| nextCursor: ${cursor ?? '(ninguno — última página)'}`
+            );
+
             // Apply entities in FK order
+            const pageResultsByTable: Record<string, { inserted: number; updated: number; conflict: number }> = {};
             await db.withTransactionAsync(async () => {
                 for (const entityKey of ENTITY_ORDER) {
                     const table = ENTITY_TABLE[entityKey];
                     const rows = entities[entityKey] ?? [];
+                    if (rows.length === 0) continue;
+                    pageResultsByTable[table] ??= { inserted: 0, updated: 0, conflict: 0 };
                     for (const row of rows) {
                         const { result, conflict } = await upsertEntity(db, table, row, fkMap);
                         if (result === 'inserted' || result === 'updated') pulled++;
-                        if (conflict) conflicts.push(conflict);
+                        if (result === 'inserted') pageResultsByTable[table].inserted++;
+                        if (result === 'updated') pageResultsByTable[table].updated++;
+                        if (conflict) {
+                            pageResultsByTable[table].conflict++;
+                            conflicts.push(conflict);
+                        }
                     }
                 }
+                devLog(`[sync-download] página ${pageNum} → resultado por tabla:`, pageResultsByTable);
 
                 // Apply tombstones
                 for (const { table, ids } of deletions) {
@@ -1255,6 +1340,7 @@ export async function downloadFromServer(
             await db.runAsync('UPDATE local_session SET last_sync=? WHERE id=1', [serverTime]);
         }
 
+        devLog(`[sync-download] TERMINADO → pulled=${pulled} deleted=${deleted} conflicts=${conflicts.length} serverTime=${serverTime}`);
         onProgress?.('Descarga completada', 100);
         return { pulled, deleted, conflicts, serverTime };
     } catch (err) {
@@ -1281,7 +1367,7 @@ export async function applyConflictResolutions(
                 if (fkFields[k]) {
                     snakeRow[camelToSnake(k)] = await resolveDownloadFk(db, fkFields[k], v, fkMap);
                 } else {
-                    snakeRow[camelToSnake(k)] = normalizeValue(v);
+                    snakeRow[camelToSnake(k)] = normalizeValue(k, v);
                 }
             }
             const updateEntries = Object.entries(snakeRow);

@@ -23,8 +23,10 @@ import {
 } from '../../../../../../hooks/breeding/breeding.types';
 import { useParturition } from '../../../../../../hooks/breeding/use-Parturition';
 import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 export default function ParturitionForm() {
+    useScreenLifecycleLog('ParturitionForm');
     const insets = useSafeAreaInsets();
     const router = useRouter();
   const [isPickerVisible, setIsPickerVisible] = useState(false);

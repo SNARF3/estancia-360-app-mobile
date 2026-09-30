@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getRequest, postRequest } from '../db.postre-connection/db.connection';
+import { downloadFromServer } from '../db.sqlite/sync';
 import { saveCredentials, saveSession } from './use-Auth';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -185,8 +186,10 @@ export const useUserLoginLogic = () => {
 
         let userDetails: UserRanchData | null = null;
 
-        // El login ya me da el idRanch. Lo usamos para traer toda la metadata.
-        const idToFetchMetadata = response.idRanch || response.idUser;
+        // El login ya me da el idRanch. Lo usamos para traer toda la metadata. Si no vino
+        // (puede pasar igual que el usuario sí tenga una estancia), probamos el fallback por
+        // idUser — en cualquiera de los dos casos, si el usuario realmente no tiene estancia
+        // (ej. Colaborador recién registrado sin QR escaneado todavía), userDetails queda null.
         const fetchEndpoint = response.idRanch
           ? `ranches/${response.idRanch}`
           : `users/ranches/${response.idUser}`;
@@ -225,14 +228,30 @@ export const useUserLoginLogic = () => {
             production_types: ranch.productionTypes.map(pt => pt.idProductionType),
             ranch_role: ranchRole || response.idRole,
           });
+
+          // logout() ahora borra SQLite por completo (ver use-Auth.ts) — sin esto, cada
+          // login real (login nunca se llama salvo primera vez / tras logout /
+          // reinstalación) dejaría al usuario con Management vacío hasta que entre a Sync
+          // a mano. No bloquea el login si falla (ej. sin conexión) — el usuario puede
+          // sincronizar manualmente después.
+          try {
+            await downloadFromServer(ranch.id, { fullSync: true });
+          } catch (downloadError) {
+            console.error('No se pudo descargar los datos de la estancia tras el login:', downloadError);
+          }
         } else {
-          // Sin ranch o sin datos extra → guardar solo lo básico en AsyncStorage
-          // (no se guarda en SQLite porque no hay ranch). access_token ya se guardó arriba.
-          await AsyncStorage.multiSet([
-            ['user_id', response.idUser.toString()],
-            ['user_role', response.idRole.toString()],
-            ['user_data', JSON.stringify({ ...response, email: formData.email.trim() })],
-          ]);
+          // Sin ranch todavía (ej. Colaborador recién registrado que aún no escaneó ningún
+          // QR) → igual pasa por saveSession() para que user_data tenga siempre la forma
+          // SessionParams (antes se guardaba un objeto crudo con la forma de LoginResponse,
+          // sin ranch_role/id_ranch — AuthGate/BottomTabBar dependen de esa forma consistente
+          // para decidir a dónde enrutar en el próximo arranque de la app).
+          await saveSession({
+            accessToken: response.accessToken,
+            idUser: response.idUser,
+            idRole: response.idRole,
+            email: formData.email.trim(),
+            fullname: 'Usuario',
+          });
         }
 
         setSuccessMessage(response.message || 'Inicio de sesión exitoso');
@@ -243,12 +262,17 @@ export const useUserLoginLogic = () => {
         ]).start();
 
         setTimeout(() => {
-          // WORKER (2) → pantalla de Worker. OWNER (1) / ADMINISTRATOR (3) / sin
-          // estancia todavía → pantalla de admin (Management).
-          if (ranchRole === 2) {
-            router.replace('/views/(tabs)/worker/WorkerManagement');
-          } else {
+          // El criterio es "¿tiene una estancia asociada?", no el rol — un usuario sin
+          // estancia (ej. Colaborador que todavía no escaneó ningún QR) va a
+          // WorkerManagement (que hoy solo ofrece "Unirse a una Estancia"); cualquiera con
+          // estancia (Owner, Administrator, o un Colaborador ya vinculado como Worker) va a
+          // Management completo — ver bug real documentado en CLAUDE.md (esta rama antes
+          // nunca seteaba ranch_role y por eso el chequeo `ranchRole === 2` mandaba
+          // incorrectamente a Management a un usuario sin estancia).
+          if (userDetails && userDetails.ranch) {
             router.replace('/views/(tabs)/admin/management/Management');
+          } else {
+            router.replace('/views/(tabs)/worker/WorkerManagement');
           }
         }, 1000);
 

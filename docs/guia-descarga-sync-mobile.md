@@ -266,7 +266,34 @@ Si el cliente truncaba o redondeaba este valor antes de enviarlo, ya no es neces
 
 ---
 
-## 9. Checklist de integración
+## 9. Gotcha real del lado del cliente móvil — normalizar `idRanch` (y cualquier id numérico) antes de persistir en SQLite
+
+Bug real encontrado y corregido 2026-09-23 en `estancia360-app-mobile` (no es un problema de este
+protocolo/backend — es un error del cliente al aplicar la respuesta, documentado acá para que no se
+repita si se reimplementa el cliente de descarga en algún momento).
+
+**Síntoma**: la descarga reportaba éxito (`ranch_animals: 173 updated`), pero el listado de
+animales del dispositivo daba siempre vacío — las filas existían en SQLite pero ninguna consulta
+las encontraba.
+
+**Causa**: `idRanch` viaja en la respuesta como número JSON (`"idRanch": 1`). La columna local
+`ranch_animals.id_ranch` (y equivalentes en otras tablas — `ranch_lots`, `ranch_pastures`,
+`movements`, `local_session`) está declarada `TEXT`. Si el cliente bindea ese número JS crudo
+directo en el `INSERT`/`UPDATE` sin convertirlo a string primero, SQLite lo guarda con afinidad
+`REAL` y su cast automático a texto de la columna produce `"1.0"` (con decimal) en vez de `"1"`.
+El resto del cliente arma ese mismo valor en otros lados con `Number.toString()` de JS (que da
+`"1"`, sin decimales, para cualquier entero) — los dos nunca vuelven a coincidir en ningún
+`WHERE id_ranch = ?` posterior, y la fila queda invisible aunque se haya guardado perfecto.
+
+**Recomendación para cualquier cliente (este u otro) que implemente este protocolo**: al aplicar
+`entities` a almacenamiento local con columnas `TEXT` para IDs de estancia/relaciones, convertir
+explícitamente cada id numérico a string con `String(valor)` (o equivalente) **antes** de
+bindearlo — nunca dejar pasar el número JS crudo hacia una columna de texto y confiar en que el
+motor de SQLite lo cast del mismo modo que lo hace el propio código JS en otro punto.
+
+---
+
+## 10. Checklist de integración
 
 - [ ] Login → guardar JWT
 - [ ] `GET /sync/ranches` → guardar lista de estancias + rol del usuario en cada una

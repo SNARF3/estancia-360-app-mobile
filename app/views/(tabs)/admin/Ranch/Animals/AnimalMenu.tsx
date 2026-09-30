@@ -16,10 +16,12 @@ import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../
 import { useAnimalClassification } from '../../../../../../hooks/Animals/offline/use-AnimalClassification';
 import { useGetListAnimals } from '../../../../../../hooks/Animals/offline/use-GetListAnimals';
 import { useSafeRouter } from '../../../../../../hooks/navigation/use-SafeRouter';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function AnimalMenuScreen() {
+    useScreenLifecycleLog('AnimalMenuScreen');
     const insets = useSafeAreaInsets();
     const router = useSafeRouter();
     const [searchQuery, setSearchQuery] = useState('');

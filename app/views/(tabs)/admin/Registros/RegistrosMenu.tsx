@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ScrollView,
     StatusBar,
@@ -23,7 +23,12 @@ import {
 } from '../../../../../components/icons/AppIcons';
 import { OptionsSheetModal } from '../../../../../components/common/OptionsSheetModal';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
+import { getSession } from '../../../../../hooks/auth/use-Auth';
 import { useSafeRouter } from '../../../../../hooks/navigation/use-SafeRouter';
+
+// ranch_role OWNER=1 — Movimientos es exclusivo del dueño de la estancia, un Colaborador
+// (ranch_role WORKER=2) puede hacer el resto de los registros pero no este.
+const OWNER_RANCH_ROLE = 1;
 
 type SafeRouter = ReturnType<typeof useSafeRouter>;
 type SheetKey = 'reproduccion' | 'partos' | 'sanidad';
@@ -127,6 +132,16 @@ export default function RegistrosMenuScreen() {
     const insets = useSafeAreaInsets();
     const [activeSheet, setActiveSheet] = useState<SheetKey | null>(null);
     const closeSheet = () => setActiveSheet(null);
+    const [isOwner, setIsOwner] = useState(false);
+
+    useEffect(() => {
+        getSession().then(session => {
+            setIsOwner(session?.id_role === OWNER_RANCH_ROLE);
+        }).catch(() => {});
+    }, []);
+
+    const visibleGridTiles = GRID_TILES.filter(t => t.label !== 'Movimientos' || isOwner);
+    const visibleBulkItems = BULK_ITEMS.filter(i => i.label !== 'Movimientos' || isOwner);
 
     return (
         <View style={styles.root}>
@@ -145,7 +160,7 @@ export default function RegistrosMenuScreen() {
                 <Text style={styles.sectionTitle}>Registros Individuales</Text>
 
                 <View style={styles.grid}>
-                    {GRID_TILES.map((tile) => (
+                    {visibleGridTiles.map((tile) => (
                         <TouchableOpacity
                             key={tile.label}
                             style={styles.tile}
@@ -162,7 +177,7 @@ export default function RegistrosMenuScreen() {
                 <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Cargas masivas</Text>
 
                 <View style={styles.bulkList}>
-                    {BULK_ITEMS.map((item) => {
+                    {visibleBulkItems.map((item) => {
                         const available = !!item.route;
                         return (
                             <TouchableOpacity

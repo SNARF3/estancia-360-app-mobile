@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useTreatment, type MedEntry } from '../../../../../../hooks/health/use-Treatment';
 import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 const COMMON_MEDS = ['Oxitetraciclina', 'Penicilina', 'Ivermectina', 'Florfenicol', 'Enrofloxacina'];
 
@@ -108,6 +109,7 @@ function MedRow({
 }
 
 export default function TreatmentForm() {
+  useScreenLifecycleLog('TreatmentForm');
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { animalCode: paramCode, from } = useLocalSearchParams<{ animalCode?: string; from?: string }>();

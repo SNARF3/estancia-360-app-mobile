@@ -23,8 +23,10 @@ import { useAnimalRegister } from '../../../../../../hooks/Animals/offline/use-A
 import { AnimalBreed, useGetAnimalsData } from '../../../../../../hooks/Animals/offline/use-GetAnimalsData';
 import { Animal, useGetListAnimals } from '../../../../../../hooks/Animals/offline/use-GetListAnimals';
 import { getDb } from '../../../../../../hooks/db.sqlite/db-pool';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 export default function AddAnimalScreen() {
+    useScreenLifecycleLog('AddAnimalScreen');
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { from } = useLocalSearchParams<{ from?: string }>();

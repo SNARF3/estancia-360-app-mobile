@@ -61,11 +61,24 @@ function useMovimientosStats() {
     return stats;
 }
 
+// ranch_role OWNER=1 — ver misma constante/razón en RegistrosMenu.tsx.
+const OWNER_RANCH_ROLE = 1;
+
 export default function MovimientosMenu() {
     const router = useSafeRouter();
     const insets = useSafeAreaInsets();
     const stats = useMovimientosStats();
     const { from } = useLocalSearchParams<{ from?: string }>();
+
+    // Defensa en profundidad: RegistrosMenu.tsx ya oculta el tile "Movimientos" para
+    // no-Owner, pero por si esta pantalla se navega de alguna otra forma, se rebota igual.
+    useEffect(() => {
+        getSession().then(session => {
+            if (session && session.id_role !== OWNER_RANCH_ROLE) {
+                router.replace('/views/(tabs)/admin/management/Management' as any);
+            }
+        }).catch(() => {});
+    }, []);
 
     const handleBack = () => {
         if (from === 'registros') {

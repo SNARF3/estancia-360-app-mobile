@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useVaccination, type VaccineEntry } from '../../../../../../hooks/health/use-Vaccination';
 import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 const COMMON_VACCINES = ['Aftosa', 'Brucelosis', 'IBR', 'DVB', 'Carbunclo', 'Leptospirosis', 'Mancha negra'];
 
@@ -73,6 +74,7 @@ function VaccineRow({
 }
 
 export default function VaccinationForm() {
+  useScreenLifecycleLog('VaccinationForm');
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { animalCode: paramCode, from } = useLocalSearchParams<{ animalCode?: string; from?: string }>();
