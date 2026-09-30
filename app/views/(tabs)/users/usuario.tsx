@@ -3,7 +3,6 @@ import NetInfo from '@react-native-community/netinfo';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-    Alert,
     ScrollView,
     StatusBar,
     StyleSheet,
@@ -13,8 +12,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarnIcon } from '../../../../components/icons/AppIcons';
+import { SyncLoadingOverlay } from '../../../../components/common/SyncLoadingOverlay';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../constants/theme';
-import { getSession, getUserData, logout, SessionParams } from '../../../../hooks/auth/use-Auth';
+import { getSession, getUserData, SessionParams } from '../../../../hooks/auth/use-Auth';
+import { useLogoutWithSync } from '../../../../hooks/auth/use-LogoutWithSync';
 import { getDb } from '../../../../hooks/db.sqlite/db-pool';
 import { countActiveAnimals } from '../../../../hooks/db.sqlite/repositories/animals';
 import { getEffectiveCapacity, useSubscription } from '../../../../hooks/subscriptions/use-Subscription';
@@ -37,13 +38,14 @@ export default function UsuarioScreen() {
     const [planHeadcount, setPlanHeadcount] = useState<number | null>(null);
     const { subscription } = useSubscription(idRanch);
     const planCapacity = getEffectiveCapacity(subscription);
+    const { confirmLogout, loggingOut, syncPhase, syncProgress } = useLogoutWithSync();
 
     useFocusEffect(
         useCallback(() => {
             getUserData().then((data) => {
                 if (!data) return;
                 setUserData(data);
-                setRoleName(ROLE_LABELS[data.ranch_role] ?? 'Usuario');
+                setRoleName((data.ranch_role != null ? ROLE_LABELS[data.ranch_role] : undefined) ?? 'Usuario');
             });
 
             getSession().then(async session => {
@@ -76,56 +78,12 @@ export default function UsuarioScreen() {
         }, [])
     );
 
-    const handleLogout = () => {
-        Alert.alert(
-            'Cerrar Sesión',
-            '¿Estás seguro que deseas cerrar sesión?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Cerrar Sesión',
-                    style: 'destructive',
-                    onPress: async () => {
-                        await logout();
-                    },
-                },
-            ]
-        );
-    };
-
     const handleViewTutorial = () => {
         router.push('/views/(tabs)/admin/management/Management?startTutorial=1' as any);
     };
 
-    const handleClearTestData = () => {
-        Alert.alert(
-            'Borrar datos de prueba',
-            'Esto eliminará TODOS los animales y sus registros. Los potreros y lotes se conservan. ¿Continuar?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Borrar todo',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            const db = await getDb();
-                            const tables = [
-                                'weight_records', 'rearing_selections', 'fattening_entries',
-                                'feed_records', 'vaccinations', 'treatments', 'health_incidents',
-                                'breeding_services', 'gestation_diagnoses', 'parturitions', 'weanings',
-                                'animal_declared_history', 'animal_events', 'ranch_animals',
-                            ];
-                            for (const t of tables) {
-                                await db.runAsync(`DELETE FROM ${t}`);
-                            }
-                            setAnimalCount(0);
-                        } catch (e: any) {
-                            Alert.alert('Error', e.message ?? 'No se pudieron borrar los datos.');
-                        }
-                    },
-                },
-            ]
-        );
+    const handleManageCollaborators = () => {
+        router.push('/views/(tabs)/admin/management/CollaboratorsScreen' as any);
     };
 
     return (
@@ -139,7 +97,7 @@ export default function UsuarioScreen() {
                         {isOnline ? 'Online' : 'Offline'}
                     </Text>
                 </View>
-                <TouchableOpacity style={styles.salirBtn} onPress={handleLogout} activeOpacity={0.75}>
+                <TouchableOpacity style={styles.salirBtn} onPress={confirmLogout} activeOpacity={0.75}>
                     <Text style={styles.salirText}>Salir</Text>
                 </TouchableOpacity>
             </View>
@@ -268,15 +226,19 @@ export default function UsuarioScreen() {
                     <Text style={styles.tutorialBtnText}>Ver tutorial</Text>
                 </TouchableOpacity>
 
-                {/* Borrar datos de prueba */}
-                <TouchableOpacity style={styles.dangerBtn} onPress={handleClearTestData} activeOpacity={0.8}>
-                    <Ionicons name="trash-outline" size={18} color={Colors.error} />
-                    <Text style={styles.dangerBtnText}>Borrar datos de prueba</Text>
-                </TouchableOpacity>
+                {/* Gestión de Colaboradores — solo el dueño de la estancia */}
+                {userData?.ranch_role === 1 && (
+                    <TouchableOpacity style={styles.tutorialBtn} onPress={handleManageCollaborators} activeOpacity={0.8}>
+                        <Ionicons name="people-outline" size={18} color={Colors.primary} />
+                        <Text style={styles.tutorialBtnText}>Gestión de Colaboradores</Text>
+                    </TouchableOpacity>
+                )}
 
                 <Text style={styles.version}>Estancia360 v2.0</Text>
                 <View style={{ height: Spacing.tabBarHeight + 20 }} />
             </ScrollView>
+
+            <SyncLoadingOverlay visible={loggingOut} phase={syncPhase} progress={syncProgress} />
         </View>
     );
 }
@@ -535,26 +497,6 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: Colors.primary,
     },
-    dangerBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.lg,
-        borderWidth: 1,
-        borderColor: Colors.error + '40',
-        backgroundColor: Colors.white,
-        marginBottom: Spacing.xl,
-        ...Shadows.card,
-    },
-    dangerBtnText: {
-        fontFamily: Typography.fontSecondary,
-        fontSize: 14,
-        fontWeight: '700',
-        color: Colors.error,
-    },
-
     version: {
         fontFamily: Typography.fontSecondary,
         fontSize: 12,

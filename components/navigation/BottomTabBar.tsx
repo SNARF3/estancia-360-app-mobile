@@ -23,13 +23,14 @@ interface TabBarProps {
 export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
   const router = useRouter();
   const pathname = usePathname();
-  // ranch_role (OWNER=1/WORKER=2/ADMINISTRATOR=3), NO el rol de sistema (getUserRole()
-  // devuelve idRole, que en casi todo ganadero normal es 3 = "Usuario" — comparar eso acá
-  // mostraba la barra de Trabajador a cualquier dueño de estancia por error).
-  const [ranchRole, setRanchRole] = React.useState<number | null>(null);
+  // El criterio es "¿tiene una estancia asociada?" (id_ranch), no el ranch_role — un
+  // usuario sin estancia (ej. Colaborador recién registrado que todavía no escaneó ningún
+  // QR) ve la barra de "sin estancia" (solo Inicio/Escanear/Perfil); cualquiera con
+  // estancia (Owner, Administrator, o un Colaborador ya vinculado) ve la barra completa.
+  const [hasRanch, setHasRanch] = React.useState<boolean | null>(null);
 
   React.useEffect(() => {
-    getUserData().then(data => setRanchRole(data?.ranch_role ?? null));
+    getUserData().then(data => setHasRanch(!!data?.id_ranch));
   }, []);
 
   const adminTabs: TabItem[] = [
@@ -81,7 +82,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
     },
   ];
 
-  const tabs = ranchRole === 2 ? workerTabs : adminTabs;
+  const tabs = hasRanch ? adminTabs : workerTabs;
 
   // Refs por nombre de tab, expuestas vía tutorialTargets.ts para que el tour de Management
   // (que vive en otra rama del árbol — este tab bar es un hermano, no un hijo) pueda resaltar
@@ -96,7 +97,7 @@ export const BottomTabBar: React.FC<TabBarProps> = ({ state, descriptors }) => {
       registerTutorialTarget(`tabbar_${tab.name}`, tabRefsRef.current[tab.name]);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ranchRole]);
+  }, [hasRanch]);
 
   const { options } = descriptors[state.routes[state.index].key];
   const isHiddenModule =

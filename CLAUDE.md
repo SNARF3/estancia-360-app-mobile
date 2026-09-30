@@ -206,7 +206,8 @@ app/views/
     users/            ← Perfil
 
 hooks/
-  auth/               ← use-Auth (SecureStore), use-UserLoginLogic, use-UserRegisterLogic,
+  auth/               ← use-Auth (SecureStore), use-LogoutWithSync (gate de logout: sync
+                         forzado + wipe de SQLite), use-UserLoginLogic, use-UserRegisterLogic,
                          use-RegisterRanch, use-UserVerificationCode, use-UserChangePassword
   config/api.ts        ← ÚNICA fuente de EXPO_PUBLIC_API_URL (usada por axios y por sync.ts)
   db.sqlite/
@@ -257,8 +258,9 @@ accede exclusivamente desde `Registros/RegistrosMenu`, donde el animal se busca 
 `AnimalPickerModal` dentro de cada formulario. **Movimientos** tiene su propio menú
 (`Ranch/movements/MovimientosMenu`), no vive dentro de AnimalMenu porque opera sobre grupos de
 animales, no sobre uno solo — también se accede desde `Registros/RegistrosMenu`.
-**Mi Equipo**/gestión de trabajadores vive en `app/views/(tabs)/worker/WorkerManagement.tsx`, no es
-un tile de `Management.tsx`.
+**Gestión de Colaboradores** (listar/quitar, agregado 2026-09-21 — ver sección propia "Módulo
+Colaborador") vive en Perfil (`users/usuario.tsx`, botón visible solo para el Owner), no es un tile
+de `Management.tsx`.
 
 **Limpieza 2026-08-09 (segunda pasada)**: se eliminó el menú contextual de 3 puntos de `AnimalMenu`
 (quedaba redundante con `RegistrosMenu`, que ya cubre las mismas 12 acciones). Los submenús
@@ -357,9 +359,11 @@ Dos capas distintas, cada una con su propia config — **no alcanza con tocar un
 consistencia en toda la app:
 
 - **Dentro de un mismo módulo** (menú → formulario → volver, ej. todo lo de `Ranch/`): lo gobierna
-  `@react-navigation/native-stack` vía `screenOptions` de cada `Stack` (`Ranch/_layout.tsx`,
-  `Animals/_layout.tsx`, `breeding/_layout.tsx`) — `animation: 'slide_from_right'`,
-  `animationDuration: 300`.
+  `@react-navigation/native-stack` vía `screenOptions` de `Ranch/_layout.tsx` —
+  `animation: 'slide_from_right'`, `animationDuration: 300`. **`breeding/` y `Animals/` ya NO
+  tienen su propio `_layout.tsx`** (se aplanaron 2026-09-23, ver "Bug de pantalla en blanco" más
+  abajo) — sus pantallas son `Stack.Screen` directas de `Ranch/_layout.tsx`, igual que
+  `health/`/`movements/`.
 - **Entre pestañas** (Management ↔ Ranch, Management ↔ Registros, Management ↔ Pesos, y los
   `router.replace(...)` de "volver al inicio" desde cada menú raíz — ver sección Back buttons): esto
   NO es push de Stack, es cambio de rama del `Tabs` raíz (`app/views/(tabs)/_layout.tsx`), gobernado
@@ -371,19 +375,149 @@ Si agregás una pantalla nueva que cruce de una rama de `Tabs` a otra (cualquier
 `admin/management`, `admin/Ranch`, `admin/Registros`, `admin/weights`, `admin/sync`, `users`), ya
 queda cubierta por la config del `Tabs` raíz — no hace falta nada por pantalla.
 
+### Bug de pantalla en blanco tras varias navegaciones — resuelto 2026-09-23 (ver `docs/dev-logging.md`)
+
+**Síntoma**: entrar a un formulario, volver, entrar a otro — anduvo bien las primeras veces y
+después, de forma consistente, la pantalla se quedaba en blanco (sin ningún error de JS — ni
+`console.error`, ni el `ErrorBoundary`/manejador global agregados para investigar esto capturaban
+nada). Reproducible también en un build real de EAS, no solo en dev. Un dato clave que terminó de
+cerrar el diagnóstico: al entrar a una pantalla nueva, a veces se veía brevemente el **contenido de
+la pantalla anterior** antes de cambiar al correcto — contenido nativo reciclado sin limpiar.
+
+Se encontraron y corrigieron **tres bugs reales de navegación de esta app** en el camino (quedan
+documentados en detalle en `docs/dev-logging.md`, sección de logs de diagnóstico):
+1. `OptionsSheetModal.tsx` navegaba (`router.push`) en el mismo tick que cerraba su `<Modal>` — se
+   corrigió diferir la navegación con un `setTimeout` (se probó primero
+   `InteractionManager.runAfterInteractions`, resultó estar deprecado y no resolvía nada bajo el
+   runtime Bridgeless de esta SDK).
+2. Los ~11 formularios accedidos desde `RegistrosMenu` volvían con `router.replace(...)` en vez de
+   `router.back()` (fix real de 2026-08-09 para un problema de esa época) — eso está bien, no se
+   tocó.
+3. **`breeding/` y `Animals/` tenían su propio `_layout.tsx` anidado** dentro del Stack de
+   `Ranch/_layout.tsx` — `popToTopOnBlur` (ver más abajo) solo resetea el stack inmediato del tab,
+   no cascadea a un stack anidado más adentro, así que esas dos carpetas acumulaban historial sin
+   límite entre visitas mientras que `health/`/`movements/` (planas) nunca tuvieron el problema. Se
+   aplanaron para que quedaran como `Stack.Screen` directas de `Ranch/_layout.tsx`.
+
+Ninguno de los tres, por separado ni juntos, resolvió el síntoma de fondo — el patrón "3
+navegaciones limpias, la 4ta en blanco" se mantuvo idéntico incluso con los tres corregidos y
+verificados (con `MOUNT`/`UNMOUNT` disparando correctamente en los logs). **La causa real vivía en
+el motor de reciclado/pooling de vistas nativas de `react-native-screens` bajo New Architecture**,
+no en esta app.
+
+**Fix real**: `enableScreens(false)` (de `react-native-screens`) llamado en `app/_layout.tsx`,
+antes de que monte cualquier navegador. Apaga la optimización nativa de `react-native-screens` por
+completo — React Navigation vuelve a su render con `View`s normales (sin pooling de vistas
+nativas). **Confirmado por Marvin que esto resuelve el bug del todo.** Contrapartida conocida y
+aceptada: las transiciones entre pantallas pierden la optimización nativa (se ven un poco menos
+fluidas), pero funcionan correctamente. Si en una sesión futura se actualiza
+`react-native-screens`/RN y se quiere reintentar con la optimización nativa prendida, sacar esa
+línea es el único paso — nada más de la app depende de que esté apagada.
+
+Además, `popToTopOnBlur: true` quedó en el `Tabs.Screen` de `admin/Ranch`
+(`app/views/(tabs)/_layout.tsx`) — reinicia el stack interno de ese tab cada vez que se navega a
+otro, para que una próxima entrada no arrastre historial de la visita anterior. Sigue siendo
+correcto tenerlo puesto aunque `enableScreens(false)` ya resuelva el síntoma visible, porque evita
+que el stack de ese tab crezca sin límite con el uso normal de la app (relevante para memoria en
+sesiones largas, más allá de este bug puntual).
+
 ---
 
 ## Sesión y Autenticación
 
 - Credenciales de sync (email+password para re-login silencioso) guardadas en **`expo-secure-store`**
   (`hooks/auth/use-Auth.ts`, clave `sync_credentials`) — antes vivían en `AsyncStorage` en texto
-  plano, migrado esta sesión. `logout()` limpia `access_token`, `user_id`, `user_role`, `user_data`
-  de AsyncStorage Y las credenciales de SecureStore — pero **no borra la DB SQLite de negocio**
-  (los datos productivos ya cargados quedan, solo se cierra la sesión).
+  plano, migrado esta sesión.
+- **Cerrar sesión ahora fuerza sync + borra SQLite (2026-09-22)** — cambio de comportamiento real,
+  no solo un fix. Antes `logout()` limpiaba AsyncStorage/SecureStore pero **no tocaba la DB SQLite
+  de negocio** ("los datos productivos ya cargados quedan"); eso es justo lo que se cambió, como
+  mitigación al hallazgo QA de que un dispositivo compartido entre dos cuentas/estancias podía
+  terminar subiendo, en el próximo sync de la segunda cuenta, los pendientes sin sincronizar que
+  dejó la primera (las queries `WHERE is_synced=0` de `sync.ts` no filtran por `id_ranch` — ver
+  detalle más abajo).
+  - **`hooks/auth/use-LogoutWithSync.ts`** (nuevo) es el único punto de entrada real a "cerrar
+    sesión" — usado por los 3 botones de logout que existen en la app (`usuario.tsx`,
+    `Management.tsx`, `SyncScreen.tsx`; antes cada uno reimplementaba su propio `Alert.alert` +
+    `logout()` + `router.replace`, ahora comparten esta lógica). Al confirmar, corre `syncAll()`
+    (con `SyncLoadingOverlay`, reutilizado del patrón ya usado en `SyncScreen.tsx`) — **si no
+    termina en éxito (sin conexión, error de servidor, límite de plan, lo que sea), NO se cierra
+    sesión**, se muestra el motivo real y el usuario se queda logueado. Sin excepción para "sin
+    conexión" — es intencional (decisión explícita de Marvin): bloquear es preferible a permitir un
+    logout que deje datos sin sincronizar en un dispositivo que después usa otra cuenta.
+  - Solo si `syncAll()` confirma éxito se llama `logout()` (`hooks/auth/use-Auth.ts`), que ahora
+    además de limpiar AsyncStorage/SecureStore llama `wipeLocalRanchData()` (`hooks/db.sqlite/
+    sync.ts`) — `DELETE FROM` cada tabla de `ALL_TABLES` (todas las tablas transaccionales de la
+    estancia, ya exportado, mismo set que usa `getPendingCount()`) + `local_session`. **No** toca
+    catálogos (`animal_breeds`/`animal_classes`/`animal_statuses`) — son globales, no dependen de
+    sesión, no hay nada que "filtrar" ahí.
+  - **Nunca llamar `logout()` directo** en un flujo nuevo sin pasar primero por
+    `useLogoutWithSync()` — se pierden datos sin sincronizar, el guard está en el hook, no en
+    `logout()` mismo (que confía en que quien lo llama ya validó el sync).
+  - Contrapartida necesaria para que esto no rompa la experiencia: `use-UserLoginLogic.ts` ahora
+    dispara `downloadFromServer(ranch.id, { fullSync: true })` automático tras un login exitoso con
+    estancia (no bloquea el login si falla) — sin esto, cada re-login tras un logout dejaría
+    Management vacío hasta que alguien entre a Sync a mano. Ni el login ni `RegisterRanch.tsx`
+    disparaban esto antes; login real solo ocurre primera vez / tras logout / reinstalación, así que
+    siempre es seguro traer todo de nuevo.
+  - **Limitación transicional conocida, no resuelta a propósito** (alcance acordado con Marvin):
+    las 15+ queries `WHERE is_synced=0` que arman los 5 `syncX()` en `sync.ts` no filtran por
+    `id_ranch` — cada tabla tiene una relación distinta con la estancia (columna directa en
+    `ranch_pastures`/`ranch_animals`/`movements`, o 1-2 saltos de JOIN vía lote/animal/evento en el
+    resto), así que filtrarlas bien es un cambio bastante más grande que este. Como cada logout
+    ahora deja SQLite completamente limpio, la ventana de riesgo real queda acotada a **una sola
+    vez por dispositivo**: el primer logout con este código nuevo en un dispositivo que YA tenía
+    mezcla de estancias sin sincronizar de antes. Después de esa vez no puede volver a pasar.
 - Sin sesión → `router.replace('/views/auth/Inicio')`.
 - **Flujo**: Inicio → Login → Management (o Worker).
 - **Back buttons**: Login→Inicio, RegisterRole→Inicio, Register→RegisterRole,
   RegisterRanch→Register, VerificationCodeEmail→Login, ChangePassword→Login.
+
+### Registro de estancia nueva — orden crítico del flujo (bug real, 2026-09-04)
+
+`RegisterRanch.tsx::handleFinalRegister` encadena 3 llamadas: crear usuario (`POST auth/register`,
+NO devuelve `accessToken` — el registro no loguea), login explícito (`POST auth/login`, el único
+paso que sí da un token), y crear la estancia (`POST ranches`, requiere JWT). **El orden entre estos
+tres pasos importa** — un intento anterior de arreglar "`saveSession()` guardaba `accessToken=''`"
+agregó el login, pero lo dejó DESPUÉS de `registerRanch()` en vez de antes, así que la llamada a
+`/ranches` seguía saliendo sin token válido (`401 INVALID_TOKEN` — el interceptor de axios en
+`db.connection.ts` manda lo que haya en `AsyncStorage['access_token']` en ese momento, que todavía
+era nada o de una sesión vieja). El registro de usuario SÍ completaba bien (se veía "Usuario
+creado: N" en el log) porque ese paso no requiere auth — el 401 pegaba recién en el paso siguiente.
+
+**Orden correcto, ya aplicado**: Paso 1 registrar usuario → Paso 2 login (y
+`AsyncStorage.setItem('access_token', ...)` ahí mismo, ANTES de la siguiente llamada, para que el
+interceptor la use) → Paso 3 registrar estancia → `saveSession()`. Si se vuelve a tocar este flujo,
+cualquier llamada autenticada tiene que ir DESPUÉS de que el token esté persistido, nunca antes.
+
+### `saveSession()` tragaba fallos de AsyncStorage — no bloqueaba la navegación (bug real, 2026-09-06)
+
+Encontrado tras el fix de arriba: Marvin reportó que, en un registro, algo falló guardando en
+AsyncStorage pero la app igual navegó a Management (y el tutorial de bienvenida nunca apareció).
+Causa: `saveSession()` (`hooks/auth/use-Auth.ts`) envolvía su `AsyncStorage.multiSet(...)` en un
+try/catch que solo hacía `console.error` y NO relanzaba — la función resolvía normal aunque el
+guardado hubiera fallado. Los 3 llamadores (`RegisterRanch.tsx`, `use-UserLoginLogic.ts`,
+`QrScannerRanch.tsx`) ya tenían su propio try/catch externo esperando que un fallo acá se
+propagara para no navegar — pero como nunca tiraba, esos catch nunca se disparaban. Fix: el catch
+de AsyncStorage en `saveSession()` ahora relanza (`throw err`) — con ese único cambio,
+`RegisterRanch.tsx` y `use-UserLoginLogic.ts` quedaron arreglados sin tocarles nada más (su
+estructura de try/catch ya era correcta).
+
+`QrScannerRanch.tsx` necesitó además su propio fix: tenía un try/catch LOCAL alrededor de
+`saveSession()` que también tragaba el error (y encima saltaba el guardado en silencio si
+`accessToken`/`ranch.id` venían vacíos) — y en cualquiera de esos casos seguía mostrando
+"¡Vinculación Exitosa!" y navegando. Como la vinculación en el servidor (`POST ranch-users`) ya se
+hizo en ese punto y no tiene sentido deshacerla, el fix no es "no navegar" sino: solo mostrar el
+éxito y navegar si `saveSession()` realmente se completó (`sessionRefreshed` boolean); si no, un
+mensaje distinto ("te uniste pero no se pudo actualizar tu sesión local, cerrá sesión y volvé a
+entrar") y quedarse en la pantalla de escaneo.
+
+**Bug relacionado, mismo síntoma en el tutorial**: `hooks/onboarding/use-Tutorial.ts` chequea el
+flag de "ya visto" con `AsyncStorage.getItem(...).catch(() => {})` — un fallo de LECTURA (mismo
+problema de AsyncStorage) se trataba exactamente igual que "ya visto", así que el tutorial no
+aparecía nunca, sin ningún error visible. Cambiado a fail-open: si falla la lectura, loguea y
+programa mostrarlo igual (mostrarlo de más una vez es mucho menos costoso que no mostrarlo nunca).
+Además, `RegisterRanch.tsx` ahora navega con `?startTutorial=1` (mismo mecanismo que el botón "Ver
+tutorial" de Perfil) para no depender únicamente del chequeo automático en segundo plano.
 
 ### Recuperar contraseña (reescrito 2026-08-05)
 
@@ -613,6 +747,54 @@ autenticado antes de procesar el batch (agregado 2026-08-05, ver nota de segurid
 Respuesta: `{ <tabla>: { "local-uuid": "server-id" }, ... }` por tabla — tras aplicarla,
 `UPDATE tabla SET is_synced=1, server_id=?, synced_at=? WHERE id=?`.
 
+### Bugs reales de sync encontrados y corregidos (2026-09-23)
+
+Marvin probó por primera vez un sync real de punta a punta contra el backend en vivo con datos que
+llevaban semanas guardados localmente sin sincronizar — nunca se había ejercitado este camino antes
+(la mayoría de los módulos estaban marcados "sin test interactivo" en este mismo archivo). Salieron
+dos bugs reales, ambos en la construcción del payload de subida (`hooks/db.sqlite/sync.ts`), **no
+introducidos en esta sesión** — dormidos desde que se escribió este código, recién visibles ahora:
+
+1. **`localRef_idEvent` nunca puede resolver, para CUALQUIER entidad con evento** (Cría:
+   `breeding_services`/`gestation_diagnoses`/`parturitions`/`weanings`; Recría: `weight_records`/
+   `rearing_selections`; Engorde: `fattening_entries`). En `syncCria`/`syncRecria`/`syncEngorde`
+   (mismo código duplicado 3 veces), cuando una tabla "necesita evento" se arma
+   `effectiveFkFields = [...fkFields, 'id_ranch_animal']` para poder resolver el animal real vía
+   el `LEFT JOIN` a `animal_events` — pero nunca se sacaba `id_event` de esa lista. Como
+   `animal_events` no es una tabla que se sincronice como entidad propia (no está en `ALL_TABLES`),
+   `id_event` JAMÁS puede resolver contra `serverIdMap` y siempre termina como
+   `data.localRef_idEvent` — que el backend rechaza porque ningún ítem del batch tiene ese
+   `localId` (nunca lo hay: `animal_events` no viaja como su propia entidad, la fecha va por
+   `happenedAt` a nivel de ítem). Fix: `id_event` se saca explícitamente de la lista de FKs a
+   resolver (`buildData()`/`toBatchItems()` ahora aceptan un `excludeFields` que descarta el campo
+   del todo, en vez de dejar que caiga en la rama de FK no resuelta).
+2. **`feed_records` mandaba `happenedAt` y el backend lo rechaza** (`property happenedAt should not
+   exist`, 400) — `toBatchItems()` incluía ese campo en TODOS los ítems sin excepción, pero
+   `feed_records` es, como ya documentaba este archivo, el único registro que no genera
+   `animal_event` — su DTO no lo acepta. Fix: `toBatchItems()` ahora recibe un flag
+   `includeHappenedAt` (`false` solo para `feed_records`).
+
+**Causa CONFIRMADA (no solo hipótesis) de un tercer síntoma reportado el mismo día**: la lista de
+animales quedaba siempre vacía aunque "Descargar todo" reportara éxito (`ranch_animals: {"updated":
+173}`). Un diagnóstico agregado en `use-GetListAnimals.ts` (`SELECT id_ranch, typeof(id_ranch), ...
+GROUP BY`) mostró la causa real sin ambigüedad: `id_ranch` (columna `TEXT` en el schema local)
+quedaba guardado como `"1.0"` en vez de `"1"`. `upsertEntity()`/`applyConflictResolutions()`
+(`sync.ts`) pasaban el `idRanch` del servidor sin convertir — un número JS crudo bindeado con
+afinidad `REAL` en SQLite, cuyo cast automático a texto de la columna produce `"1.0"` — mientras que
+el resto de la app siempre arma ese mismo valor con `params.id_ranch.toString()` (JS, da `"1"`).
+Nunca vuelven a coincidir, así que cualquier `WHERE id_ranch = ?` (el filtro de
+`use-GetListAnimals.ts` incluido) no encuentra nada, aunque la fila exista perfecta. **Fix**:
+`normalizeValue(key, v)` en `sync.ts` ahora fuerza `idRanch` a `String(v)` explícito — cubre
+cualquier tabla con `id_ranch`, no solo `ranch_animals` (ej. también `movements`). No hace falta
+migración: la próxima "Descargar todo" hace `UPDATE` sobre las filas ya existentes (matcheadas por
+`server_id`) con el valor corregido, así que se auto-reparan solas. **Confirmado por Marvin que
+esto resuelve el listado vacío.**
+
+De paso (no era la causa real, pero es una corrección válida igual y se dejó): la única consulta de
+todo el repo que hacía `JOIN` (no `LEFT JOIN`) contra `animal_breeds` en `use-GetListAnimals.ts` se
+cambió a `LEFT JOIN` con fallback (`'Raza desconocida'` + el `id_breed` crudo) — un animal no
+debería desaparecer del inventario solo por no poder resolver su raza contra el catálogo local.
+
 ---
 
 ## Cargas Masivas (Excel)
@@ -728,6 +910,73 @@ refresh real, compra todo-o-nada, y un rechazo real de sync que no tumbe el rest
 
 ---
 
+## Módulo Colaborador (2026-09-21)
+
+Un "Colaborador" es alguien que se registra solo (opción "Encargado" en `RegisterRole.tsx`, ya
+existía) y se une a una estancia escaneando un QR generado por el dueño — **sin ningún endpoint de
+backend nuevo**. Confirmado contra el spec real de Swagger (prod y test, idénticos) que no existe
+ningún grupo de endpoints de "invitación de colaboradores"; esto se construyó combinando dos
+mecanismos que ya existían por separado:
+
+- **Alta**: sigue siendo `POST /ranch-users` (`{idUser, idRanch}`, ya usado desde antes por
+  `hooks/workers/use-WorkerWithRanch.ts`) — el backend fuerza rol Worker y no valida que quien
+  llama sea el dueño, pero encaja perfecto acá porque el colaborador ya tiene su propia cuenta
+  (se registró solo) y solo falta linkearlo.
+- **Gestión (listar/quitar)**: usa el grupo "Ranch Members" — `GET /ranch-users/ranch/{idRanch}`
+  y `DELETE /ranch-users/ranch/{idRanch}/members/{idTargetUser}`. **No** se usa
+  `POST /ranch-users/ranch/{idRanch}/members` (ese crea una cuenta nueva con password puesta por
+  el admin — no encaja con "el colaborador se registra solo").
+
+**Cifrado del QR**: `hooks/security/qrEncryption.ts`, AES vía `crypto-js` (dependencia nueva) con
+una clave estática embebida en el bundle — es ofuscación (evita leer el QR desde una foto), no
+seguridad real, ya que el backend tampoco valida nada de esto del lado servidor. El generador
+(`app/views/(tabs)/admin/management/QrWorkerGenerator.tsx`, dejó de ser pantalla huérfana) lee los
+datos de la estancia de SQLite local (`getSession()`, tabla `local_session`) en vez de hacer un
+`GET /ranches/{id}` por red — funciona sin conexión. El scanner (`worker/QrScannerRanch.tsx`)
+ahora desencripta y **muestra una tarjeta de confirmación** (nombre de la estancia + botones
+Confirmar/Cancelar) antes de llamar a `POST /ranch-users` — antes vinculaba apenas terminaba de
+leer el QR, sin ningún paso de confirmación. Tras un vínculo + refresco de sesión exitosos, se
+dispara `downloadFromServer({fullSync: true})` antes de navegar (antes el colaborador quedaba
+vinculado en el servidor pero con SQLite local vacío de esa estancia).
+
+**Bug de enrutamiento corregido de paso** (afectaba a cualquier usuario sin estancia, no solo a
+Colaboradores): `AuthGate` (`app/_layout.tsx`) y `BottomTabBar.tsx` decidían Management vs
+WorkerManagement comparando `ranch_role === 2` — pero un usuario recién registrado sin estancia
+nunca tenía `ranch_role` seteado (esa rama de `use-UserLoginLogic.ts` guardaba un objeto crudo sin
+esa forma), así que cualquier `ranchRole` `undefined` caía en el `else` → Management completo sin
+tener estancia. El criterio ahora es **"¿tiene `id_ranch`?"**, no el rol: sin estancia →
+`WorkerManagement` (hoy solo ofrece "Unirse a una Estancia"); con estancia (Owner, Administrator,
+o un Colaborador ya vinculado) → `Management` completo, sin distinción — no hace falta ninguna
+pantalla operativa nueva para el Colaborador, reusa las mismas de Owner. `SessionParams` (`use-
+Auth.ts`) tiene ahora `id_ranch`/`ranch_name`/`production_types`/`ranch_role` opcionales para
+soportar este estado intermedio, y `saveSession()` saltea el `INSERT` a `local_session` si no hay
+`id_ranch` todavía.
+
+**Gating de Colaborador vs Owner** (antes CERO gating por rol a nivel de pantalla/tile en toda la
+app): `RegistrosMenu.tsx` filtra el tile "Movimientos" y el bulk-import de Movimientos si
+`ranch_role !== 1` (Owner); `MovimientosMenu.tsx` tiene además un guard propio (defensa en
+profundidad) que rebota a Management si alguien no-Owner llega ahí igual. La pantalla nueva
+`CollaboratorsScreen.tsx` (acceso desde Perfil, botón "Gestión de Colaboradores", **solo visible
+si `ranch_role === 1`**) es donde el Owner ve la lista (`hooks/collaborators/use-Collaborators.ts`)
+y puede quitar a cualquiera que no sea él mismo.
+
+**De paso, a pedido explícito de Marvin**: se sacó el botón "Borrar datos de prueba" de Perfil
+(`usuario.tsx`) — era una utilidad de desarrollo, no una feature de producto.
+
+Archivos nuevos: `hooks/security/qrEncryption.ts`, `hooks/collaborators/use-Collaborators.ts`,
+`app/views/(tabs)/admin/management/CollaboratorsScreen.tsx` (registrada en el `_layout.tsx` de
+`admin/management/`, fácil de olvidar — mismo gotcha ya documentado para bulk import). Se borró
+`hooks/auth/use-RanchData.ts` (quedó sin ningún import real tras mover `QrWorkerGenerator.tsx` a
+leer de SQLite en vez de hacer el fetch que ese hook envolvía). Se agregó `deleteRequest()` a
+`hooks/db.postre-connection/db.connection.ts` (antes no existía ningún wrapper DELETE en el repo).
+
+**Sin test interactivo todavía** — pendiente el flujo end-to-end completo (registrar Colaborador →
+escanear → confirmar → operar en Management sin ver Movimientos → Owner lo ve en Gestión de
+Colaboradores → quitarlo) y, en particular, confirmar si el DELETE de "Quitar" funciona para un
+Worker (ver ítem 9 de TAREAS PENDIENTES).
+
+---
+
 ## Módulos implementados
 
 | Módulo | Estado | Acceso | Archivos clave |
@@ -743,6 +992,7 @@ refresh real, compra todo-o-nada, y un rechazo real de sync que no tumbe el rest
 | Cargas Masivas | ✅ (Sanidad-Vacunas desalineada, ver nota) | Management → Cargas Masivas → RegistrosMenu | ver sección propia |
 | Sincronización | ✅ | Tab bar | SyncScreen, sync.ts |
 | Pagos/Suscripciones | ✅ (recién agregado 2026-08-20, sin test interactivo) | Badge en Management, guard local en las 3 altas | ver sección propia arriba — solo lectura + límite de capacidad, sin pantallas de pago |
+| Colaborador | ✅ (recién agregado 2026-09-21, sin test interactivo) | Perfil → "Gestión de Colaboradores" (Owner), QR desde ahí → escaneo en `worker/QrScannerRanch` | ver sección propia arriba — "Quitar" depende de confirmar que el DELETE de backend acepta rol Worker |
 | Recuperar contraseña | ✅ (recién reescrito, sin test interactivo) | Login → VerificationCodeEmail → ChangePassword | ver sección Auth |
 | Reportes | ❌ Pendiente | — | Solo vista básica en WeightsScreen |
 
@@ -853,3 +1103,13 @@ un endpoint público real (`/subscription-plans`, sin auth) en vez de confiar en
    foreign_keys=OFF` alrededor del loop de `runMigrations`). Sin verificar todavía en el dispositivo
    real donde se reportó. Si vuelve a fallar, revisar si aparece un warning de `foreign_key_check`
    en el log — indicaría datos huérfanos reales, no solo el problema de orquestación ya arreglado.
+9. ~~Módulo "Colaborador"/"Encargado" — pausado esperando al backend~~ — **implementado
+   2026-09-21**, sin depender de ningún endpoint nuevo. Ver sección propia "Módulo Colaborador"
+   más abajo para el diseño completo. Pendiente real que queda de esta implementación: confirmar
+   en vivo (Marvin, contra el backend de test) que `DELETE
+   /ranch-users/ranch/{idRanch}/members/{idTargetUser}` efectivamente da de baja a un colaborador
+   con rol Worker — el summary de Swagger de ese endpoint dice "Remove an administrator" y no hay
+   forma de saber desde el spec si también acepta Workers; si el backend lo rechaza (403/404), el
+   botón "Quitar" de `CollaboratorsScreen.tsx` ya maneja ese caso mostrando un mensaje en vez de
+   fallar en silencio (ver `removeCollaborator()` en `hooks/collaborators/use-Collaborators.ts`),
+   pero no hay manera real de sacar a alguien hasta que se confirme o se resuelva del lado backend.

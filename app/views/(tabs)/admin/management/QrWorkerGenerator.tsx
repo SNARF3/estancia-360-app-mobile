@@ -1,35 +1,45 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ActivityIndicator, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 
 import { HeaderText } from '../../../../../components/common/HeaderText';
 import { ScreenContainer } from '../../../../../components/layout/ScreenContainer';
 import { Colors, Spacing, Typography } from '../../../../../constants/theme';
-import { useRanchData } from '../../../../../hooks/auth/use-RanchData';
+import { getSession } from '../../../../../hooks/auth/use-Auth';
+import { encryptRanchQrPayload } from '../../../../../hooks/security/qrEncryption';
+
+interface RanchQrInfo {
+    id: number;
+    name: string;
+}
 
 export default function QrWorkerGenerator() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
-    const { ranch, loading, error } = useRanchData();
+    const [ranch, setRanch] = useState<RanchQrInfo | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-    const qrPayload = ranch ? JSON.stringify({
-        action: 'link_worker',
-        ranchId: ranch.id,
-        ranchName: ranch.name
-    }) : '';
+    useEffect(() => {
+        // Los datos de la estancia salen de SQLite local (local_session), no de una llamada
+        // de red — así el QR se puede generar sin conexión.
+        getSession().then(session => {
+            if (!session?.id_ranch || !session.ranch_name) {
+                setError('No hay datos de estancia disponibles');
+            } else {
+                setRanch({ id: Number(session.id_ranch), name: session.ranch_name });
+            }
+            setLoading(false);
+        }).catch(() => {
+            setError('No hay datos de estancia disponibles');
+            setLoading(false);
+        });
+    }, []);
 
-    const handleShare = async () => {
-        try {
-            await Share.share({
-                message: `Únete a ${ranch?.name} usando este código: ${ranch?.id}`,
-            });
-        } catch (error: any) {
-            console.error(error.message);
-        }
-    };
+    const qrPayload = ranch ? encryptRanchQrPayload({ ranchId: ranch.id, ranchName: ranch.name }) : '';
 
     if (loading) {
         return (
@@ -59,18 +69,15 @@ export default function QrWorkerGenerator() {
                 <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
                     <Ionicons name="arrow-back" size={28} color={Colors.textPrimary} />
                 </TouchableOpacity>
-                <HeaderText variant="h2">Vincular Trabajadores</HeaderText>
+                <HeaderText variant="h2">Agregar Colaborador</HeaderText>
             </View>
 
             <View style={styles.content}>
                 <Text style={styles.description}>
-                    Pide a tus trabajadores que escaneen este código QR desde su aplicación para unirse a:
+                    Pedile a tu colaborador que escanee este código QR desde su aplicación para unirse a:
                 </Text>
 
                 <Text style={styles.ranchName}>{ranch.name}</Text>
-                <Text style={styles.locationText}>
-                    {ranch.city.name} - {ranch.productionTypes.map(pt => pt.productionType.name).join(', ')}
-                </Text>
 
                 {/* Contenedor del QR */}
                 <View style={styles.qrContainer}>
@@ -157,11 +164,6 @@ const styles = StyleSheet.create({
         ...Typography.h1,
         color: Colors.primary,
         textAlign: 'center',
-        marginBottom: Spacing.xs,
-    },
-    locationText: {
-        ...Typography.bodySmall,
-        color: Colors.textSecondary,
         marginBottom: Spacing.xxl,
     },
     qrContainer: {
@@ -195,19 +197,5 @@ const styles = StyleSheet.create({
         color: Colors.textPrimary,
         ...Typography.bodySmall,
         lineHeight: 18,
-    },
-    shareButton: {
-        flexDirection: 'row',
-        backgroundColor: Colors.secondary,
-        paddingVertical: Spacing.md,
-        paddingHorizontal: Spacing.xl,
-        borderRadius: 12,
-        alignItems: 'center',
-        gap: Spacing.sm,
-    },
-    shareText: {
-        color: Colors.white,
-        ...Typography.body,
-        fontWeight: '600',
     },
 });

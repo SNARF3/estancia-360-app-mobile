@@ -3,6 +3,10 @@ import React from 'react';
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BorderRadius, Colors, Spacing, Typography } from '../../constants/theme';
 
+// El <Modal> de este componente usa animationType="fade" (ver más abajo) — RN no expone una
+// duración configurable para eso, el valor por default de la plataforma ronda los 300ms.
+const MODAL_CLOSE_ANIMATION_MS = 350;
+
 export interface OptionSheetItem {
     key: string;
     label: string;
@@ -19,9 +23,27 @@ interface Props {
 }
 
 export const OptionsSheetModal: React.FC<Props> = ({ visible, title, options, onClose }) => {
+    // Causa encontrada 2026-09-23 del bug de "pantalla en blanco al elegir una opción de este
+    // sheet" (Reproducción, Partos, Sanidad — cualquier menú que use este componente): onClose()
+    // y option.onSelect() (que hace router.push) se llamaban sincrónicamente, en el mismo tick.
+    // El <Modal> nativo de RN todavía está en medio de su animación/transición de cierre cuando
+    // react-native-screens intenta presentar la pantalla nueva — bajo New Architecture esa carrera
+    // puede dejar la pantalla nueva sin pintarse (blanco, sin ningún error de JS, confirmado con
+    // el error-boundary/error-logger de docs/dev-logging.md: no capturan nada porque no hay
+    // ninguna excepción, es un problema de timing nativo).
+    //
+    // Primer intento (revertido): InteractionManager.runAfterInteractions. React Native lo tiene
+    // deprecado ("InteractionManager has been deprecated and will be removed in a future
+    // release" — warning real visto en consola) y, confirmado en la práctica, el blanco seguía
+    // apareciendo con esto puesto — bajo el runtime Bridgeless de esta SDK no parece estar
+    // esperando lo que debería. Se reemplazó por un setTimeout simple, menos elegante pero mucho
+    // más predecible: no depende de ninguna API deprecada, solo de que el tiempo de la animación
+    // de cierre del modal (animationType="fade" más abajo) ya haya pasado.
     const handleSelect = (option: OptionSheetItem) => {
         onClose();
-        option.onSelect();
+        setTimeout(() => {
+            option.onSelect();
+        }, MODAL_CLOSE_ANIMATION_MS);
     };
 
     return (

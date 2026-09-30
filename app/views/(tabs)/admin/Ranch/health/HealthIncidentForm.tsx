@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../../../../../constants/theme';
 import { useHealthIncident } from '../../../../../../hooks/health/use-HealthIncident';
 import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 const INCIDENT_TYPES = [
   { value: 'illness_detected' as const, label: 'Enfermedad detectada' },
@@ -24,6 +25,7 @@ const INCIDENT_TYPES = [
 ];
 
 export default function HealthIncidentForm() {
+  useScreenLifecycleLog('HealthIncidentForm');
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { animalCode: paramCode, from } = useLocalSearchParams<{ animalCode?: string; from?: string }>();

@@ -93,4 +93,16 @@ export const getRequest = async <T = any>(
   }
 };
 
+// Función para realizar peticiones DELETE
+export const deleteRequest = async <T = any>(
+  endpoint: string
+): Promise<T> => {
+  try {
+    const response = await axiosInstance.delete(endpoint);
+    return response.data as T;
+  } catch (error: any) {
+    throw error;
+  }
+};
+
 export default axiosInstance;

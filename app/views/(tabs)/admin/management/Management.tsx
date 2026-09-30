@@ -18,8 +18,10 @@ import {
     WeightsBarIcon,
 } from '../../../../../components/icons/AppIcons';
 import { TutorialOverlay } from '../../../../../components/onboarding/TutorialOverlay';
+import { SyncLoadingOverlay } from '../../../../../components/common/SyncLoadingOverlay';
 import { BorderRadius, Colors, Shadows, Spacing, Typography } from '../../../../../constants/theme';
-import { getUserData, logout } from '../../../../../hooks/auth/use-Auth';
+import { getUserData } from '../../../../../hooks/auth/use-Auth';
+import { useLogoutWithSync } from '../../../../../hooks/auth/use-LogoutWithSync';
 import { useSafeRouter } from '../../../../../hooks/navigation/use-SafeRouter';
 import { getTutorialTarget } from '../../../../../hooks/onboarding/tutorialTargets';
 import { TutorialStep, useTutorial } from '../../../../../hooks/onboarding/use-Tutorial';
@@ -105,6 +107,7 @@ export default function ManagementScreen() {
     const [ranchName, setRanchName] = useState('---');
     const [isOnline, setIsOnline] = useState(true);
     const tutorial = useTutorial('admin_management', TUTORIAL_STEPS);
+    const { confirmLogout, loggingOut, syncPhase, syncProgress } = useLogoutWithSync();
 
     // Relanzado desde el botón "Ver tutorial" del Perfil (que navega con ?startTutorial=1).
     useEffect(() => {
@@ -127,11 +130,6 @@ export default function ManagementScreen() {
         return unsub;
     }, []);
 
-    const handleLogout = async () => {
-        await logout();
-        router.replace('/views/auth/Inicio' as any);
-    };
-
     return (
         <View style={styles.root}>
             <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
@@ -152,7 +150,7 @@ export default function ManagementScreen() {
                     >
                         <Ionicons name="help-circle-outline" size={22} color={Colors.textSecondary} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.salirBtn} onPress={handleLogout} activeOpacity={0.75}>
+                    <TouchableOpacity style={styles.salirBtn} onPress={confirmLogout} activeOpacity={0.75}>
                         <Text style={styles.salirText}>Salir</Text>
                     </TouchableOpacity>
                 </View>
@@ -198,6 +196,7 @@ export default function ManagementScreen() {
                 onNext={tutorial.next}
                 onSkip={tutorial.skip}
             />
+            <SyncLoadingOverlay visible={loggingOut} phase={syncPhase} progress={syncProgress} />
         </View>
     );
 }

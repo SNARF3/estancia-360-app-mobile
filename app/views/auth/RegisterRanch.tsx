@@ -193,7 +193,26 @@ export default function RegisterRanchScreen() {
             if (!userRegisterResponse?.user?.id) return;
 
             console.log('Usuario creado ID:', userRegisterResponse.user.id);
-            console.log('[Paso 2] Registrando Estancia...');
+
+            // Ni /auth/register ni /ranches devuelven un accessToken (el registro no loguea
+            // al usuario) — pero POST /ranches SÍ requiere JWT. Este login tiene que pasar
+            // ANTES de registrar la estancia, no después: un intento anterior de arreglar
+            // esto agregó el login solo para que saveSession() no quedara con
+            // accessToken='', pero lo dejó DESPUÉS de registerRanch(), así que la llamada a
+            // /ranches seguía saliendo sin token válido (401 INVALID_TOKEN, bug real
+            // encontrado 2026-09-04 — el interceptor de axios manda lo que haya en
+            // AsyncStorage en ese momento, que todavía era nada/viejo).
+            console.log('[Paso 2] Autenticando para obtener accessToken...');
+            const loginResponse = await postRequest<{ accessToken: string }>('auth/login', {
+                email: rawUserData.email,
+                password: rawUserData.password,
+            });
+            // Persistir ya mismo — el interceptor de axios (db.connection.ts) lee
+            // access_token de acá para adjuntar el Authorization Bearer de la próxima llamada.
+            await AsyncStorage.setItem('access_token', loginResponse.accessToken);
+            await saveCredentials(rawUserData.email, rawUserData.password);
+
+            console.log('[Paso 3] Registrando Estancia...');
 
             const ranchPayload = {
                 idUser: userRegisterResponse.user.id,
@@ -206,18 +225,6 @@ export default function RegisterRanchScreen() {
 
             if (ranchRegisterResponse && ranchRegisterResponse.ranch) {
                 console.log('✅ Estancia creada exitosamente.');
-
-                // Ni /auth/register ni /ranches devuelven un accessToken (el registro no
-                // loguea al usuario). Sin este login explícito, saveSession() se llamaba con
-                // accessToken='' — el dispositivo quedaba con un Bearer vacío guardado justo
-                // antes de aterrizar en Management, que dispara GETs autenticados de inmediato
-                // (401 en cascada, mismo bug que ya se corrigió en el login normal).
-                console.log('[Paso 3] Autenticando para obtener accessToken...');
-                const loginResponse = await postRequest<{ accessToken: string }>('auth/login', {
-                    email: rawUserData.email,
-                    password: rawUserData.password,
-                });
-                await saveCredentials(rawUserData.email, rawUserData.password);
 
                 const user = userRegisterResponse.user;
                 const ranch = ranchRegisterResponse.ranch;
@@ -241,8 +248,11 @@ export default function RegisterRanchScreen() {
                 showMessage({ message: '¡Registro Exitoso!', description: 'Bienvenido a Estancia 360', type: 'success' });
                 await AsyncStorage.removeItem('selectedRoleId');
 
-                // Si ya guardamos sesión, podemos ir directo al Home
-                setTimeout(() => router.replace('/views/(tabs)/admin/management/Management'), 1500);
+                // Si ya guardamos sesión, podemos ir directo al Home — ?startTutorial=1
+                // dispara el tour de bienvenida de una, sin depender únicamente del chequeo
+                // automático en segundo plano de useTutorial (que puede fallar en silencio
+                // si AsyncStorage tiene un hiccup justo en este momento, ver use-Tutorial.ts).
+                setTimeout(() => router.replace('/views/(tabs)/admin/management/Management?startTutorial=1' as any), 1500);
             }
 
         } catch (error: any) {

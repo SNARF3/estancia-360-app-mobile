@@ -19,8 +19,10 @@ import { Colors } from '../../../../../../constants/theme';
 import { SERVICE_TYPE_LABELS } from '../../../../../../hooks/breeding/breeding.types';
 import { useBreedingService } from '../../../../../../hooks/breeding/use-BreedingService';
 import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 export default function BreedingServiceForm() {
+    useScreenLifecycleLog('BreedingServiceForm');
     const insets = useSafeAreaInsets();
     const router = useRouter();
   const [isPickerVisible, setIsPickerVisible] = useState(false);

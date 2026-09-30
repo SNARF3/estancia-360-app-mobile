@@ -6,6 +6,7 @@ export default function ManagementLayout() {
       <Stack.Screen name="Management" />
       {/* Defined implicitly or added if needed */}
       <Stack.Screen name="QrWorkerGenerator" />
+      <Stack.Screen name="CollaboratorsScreen" />
     </Stack>
   );
 }

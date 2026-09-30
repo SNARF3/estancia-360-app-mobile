@@ -42,7 +42,21 @@ export default function TabLayout() {
       {/* admin/Ranch tiene su propio _layout */}
       <Tabs.Screen
         name="admin/Ranch"
-        options={{ href: null }}
+        options={{
+          href: null,
+          // Bug real encontrado 2026-09-23: admin/Ranch es un Tabs.Screen propio (tab hermano
+          // de Registros/Management/etc, NO anidado dentro de un Stack compartido con ellos —
+          // confirmado leyendo el código de @react-navigation/bottom-tabs). Por default, React
+          // Navigation conserva el historial interno del Stack de un tab entre visitas — cada
+          // vez que se entraba a un formulario distinto (Reproducción, Sanidad, Nuevo Animal,
+          // etc.) sin que este tab se reiniciara, se apilaba una pantalla más sobre las de la
+          // visita anterior. Con New Architecture, ese stack cada vez más profundo terminaba en
+          // pantalla en blanco sin ninguna excepción de JS. popToTopOnBlur reinicia el stack
+          // interno de este tab cada vez que se navega a otro — así cada entrada arranca limpia.
+          // (No confundir con dismissTo/POP_TO, que se probó y se revirtió: esa acción solo
+          // funciona DENTRO de un mismo stack, y admin/Ranch y Registros son stacks distintos.)
+          popToTopOnBlur: true,
+        }}
       />
       {/* bulkImport no tiene _layout, sus archivos se descubren individualmente */}
       <Tabs.Screen

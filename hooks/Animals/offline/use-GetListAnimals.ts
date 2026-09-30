@@ -1,10 +1,11 @@
 // hooks/Animals/offline/use-GetListAnimals.ts
 
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { getSession } from '../../auth/use-Auth';
 import { constants } from '../../../constants/constants';
 import { getDb } from '../../db.sqlite/db-pool';
+import { devLog } from '../../devLogger';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -72,21 +73,49 @@ export function useGetListAnimals(autoFetch: boolean = true) {
                 id_status: number;
                 id_mother: string | null;
                 id_father: string | null;
-                breed_id: number;
-                breed_name: string;
+                id_breed: number;
+                breed_id: number | null;
+                breed_name: string | null;
             }>(
                 `SELECT
            a.id, a.server_id, a.code, a.sex, a.birthdate, a.weight,
            a.origin, a.id_lot, a.id_productive_status, a.id_animal_class,
-           a.id_status, a.id_mother, a.id_father,
+           a.id_status, a.id_mother, a.id_father, a.id_breed,
            b.id   AS breed_id,
            b.name AS breed_name
          FROM ranch_animals a
-         JOIN animal_breeds  b  ON b.id = a.id_breed
+         LEFT JOIN animal_breeds b ON b.id = a.id_breed
          WHERE a.id_ranch = ? AND a.id_status != 3
          ORDER BY a.code ASC`,
                 [session.id_ranch]
             );
+
+            devLog(`[animals] fetchAnimals: session.id_ranch=${JSON.stringify(session.id_ranch)} → ${rows.length} filas con el filtro completo (id_ranch + id_status!=3)`);
+            if (rows.length === 0) {
+                // Diagnóstico 2026-09-23: la descarga de sync reporta animales "updated" pero acá
+                // no aparece ninguno — esto descompone el filtro para ver exactamente dónde se
+                // pierden, en vez de seguir adivinando (ver docs/dev-logging.md).
+                try {
+                    const totalRaw = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM ranch_animals');
+                    const byRanch = await db.getAllAsync<{ id_ranch: string; t: string; count: number }>(
+                        'SELECT id_ranch, typeof(id_ranch) as t, COUNT(*) as count FROM ranch_animals GROUP BY id_ranch, typeof(id_ranch)'
+                    );
+                    const matchingRanchNoStatusFilter = await db.getFirstAsync<{ count: number }>(
+                        'SELECT COUNT(*) as count FROM ranch_animals WHERE id_ranch = ?', [session.id_ranch]
+                    );
+                    const statusBreakdown = await db.getAllAsync<{ id_status: number; count: number }>(
+                        'SELECT id_status, COUNT(*) as count FROM ranch_animals WHERE id_ranch = ? GROUP BY id_status', [session.id_ranch]
+                    );
+                    devLog(
+                        `[animals] DIAGNÓSTICO vacío → total en tabla (sin ningún filtro): ${totalRaw?.count}`,
+                        `| agrupado por id_ranch real (valor + tipo SQLite):`, byRanch,
+                        `| con id_ranch=session pero SIN filtro id_status: ${matchingRanchNoStatusFilter?.count}`,
+                        `| desglose de id_status para ese id_ranch:`, statusBreakdown
+                    );
+                } catch (diagErr) {
+                    devLog('[animals] DIAGNÓSTICO vacío → error corriendo las queries de diagnóstico:', diagErr);
+                }
+            }
 
             const mapped: Animal[] = rows.map(r => {
                 // Encontrar el nombre de la clase desde las constantes lokales
@@ -110,7 +139,11 @@ export function useGetListAnimals(autoFetch: boolean = true) {
                     isSterilized: className.toLowerCase().includes('esterilizada'),
                     // hasCalved → calculado dinámicamente más adelante si se necesita
                     hasCalved: false,
-                    breed: { id: r.breed_id, name: r.breed_name },
+                    // b.id/b.name pueden venir null si id_breed no matchea ningún catálogo
+                    // local (ej. animal descargado del servidor con una raza fuera del
+                    // catálogo sembrado localmente) — antes esto era un INNER JOIN y esos
+                    // animales directamente desaparecían de la lista sin ningún aviso.
+                    breed: { id: r.breed_id ?? r.id_breed, name: r.breed_name ?? 'Raza desconocida' },
                     status: {
                         id: r.id_status,
                         name: r.id_status === 1 ? 'OK' : r.id_status === 2 ? 'Observación' : 'Inactivo',

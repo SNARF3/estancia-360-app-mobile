@@ -99,7 +99,16 @@ export function useTutorial(flag: string, steps: TutorialStep[]) {
                     timer = setTimeout(start, AUTO_START_DELAY_MS);
                 }
             })
-            .catch(() => {});
+            .catch((err) => {
+                // Bug real encontrado 2026-09-06: tragar esto en silencio trataba un fallo
+                // de LECTURA exactamente igual que "ya visto" — el tutorial no aparecía
+                // nunca, sin ningún error visible, para cualquier usuario nuevo cuyo
+                // AsyncStorage tuviera un hiccup justo en ese momento. Fail-open: si no se
+                // puede confirmar si ya se vio, mostrarlo igual — es mucho menos costoso
+                // mostrarlo de más una vez que no mostrarlo nunca.
+                console.error('[useTutorial] no se pudo leer el flag de visto, se muestra igual:', err);
+                timer = setTimeout(start, AUTO_START_DELAY_MS);
+            });
         return () => timer && clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

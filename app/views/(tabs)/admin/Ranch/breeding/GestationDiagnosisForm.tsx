@@ -22,8 +22,10 @@ import {
 } from '../../../../../../hooks/breeding/breeding.types';
 import { useGestationDiagnosis } from '../../../../../../hooks/breeding/use-GestationDiagnosis';
 import { breedingFormStyles as styles } from '../../../../../../constants/breedingFormStyles';
+import { useScreenLifecycleLog } from '../../../../../../hooks/devLogger';
 
 export default function GestationDiagnosisForm() {
+    useScreenLifecycleLog('GestationDiagnosisForm');
     const insets = useSafeAreaInsets();
     const router = useRouter();
   const [isPickerVisible, setIsPickerVisible] = useState(false);

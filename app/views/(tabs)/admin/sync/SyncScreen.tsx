@@ -1,6 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -30,7 +30,7 @@ import {
   downloadFromServer,
   syncAll,
 } from '../../../../../hooks/db.sqlite/sync';
-import { logout } from '../../../../../hooks/auth/use-Auth';
+import { useLogoutWithSync } from '../../../../../hooks/auth/use-LogoutWithSync';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -424,6 +424,13 @@ export default function SyncScreen() {
     runDownload, cancelDownload, handleConflictResolve, clearConflicts,
   } = useSyncData();
 
+  const {
+    confirmLogout,
+    loggingOut,
+    syncPhase: logoutPhase,
+    syncProgress: logoutProgress,
+  } = useLogoutWithSync();
+
   const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
@@ -442,19 +449,6 @@ export default function SyncScreen() {
       ' ' + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const handleLogout = () => {
-    Alert.alert('Cerrar sesión', '¿Estás seguro que deseas salir?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Salir',
-        style: 'destructive',
-        onPress: async () => {
-          await logout();
-          router.replace('/views/auth/Inicio');
-        },
-      },
-    ]);
-  };
 
   const activeModules = modules.filter(m => m.count > 0);
   const busy = syncing || loading || downloading;
@@ -463,6 +457,7 @@ export default function SyncScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.background} />
       <SyncLoadingOverlay visible={syncing} phase={syncPhase} progress={syncProgress} />
+      <SyncLoadingOverlay visible={loggingOut} phase={logoutPhase} progress={logoutProgress} />
       <DownloadLoadingOverlay
         visible={downloading}
         phase={downloadPhase}
@@ -525,7 +520,7 @@ export default function SyncScreen() {
             {isOnline ? 'Online' : 'Offline'}
           </Text>
         </View>
-        <TouchableOpacity style={styles.salirBtn} onPress={handleLogout} activeOpacity={0.75}>
+        <TouchableOpacity style={styles.salirBtn} onPress={confirmLogout} activeOpacity={0.75}>
           <Text style={styles.salirText}>Salir</Text>
         </TouchableOpacity>
       </View>
